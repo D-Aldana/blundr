@@ -229,30 +229,97 @@ Concrete, deterministic rules behind the 4 category scores in Section 9. These a
 - 6+ instances → `confidence: "ok"`
 - Below 3 → `confidence: "insufficient"` — category omitted from the headline/recommendation logic but still shown in the UI as "not enough data yet," consistent with Section 5's guard.
 
-**Category score formula (v1 heuristic):**
+**Category score formula (v1):**
 
 ```
-score = min(1.0, (sum of centipawn loss for qualifying instances) / (instance count × severity_normalizer))
+score = min(1.0, (instances / opportunities) / severe_rate)
 ```
 
-`severity_normalizer` is a per-category constant (e.g., 300 for tactical, 200 for endgame) chosen so scores land in a roughly comparable range across categories. Flagged explicitly as a known simplification to revisit once real game data is available to calibrate against.
+The score is a **rate**: how often a category fires, against how often it could have. Each category has its own opportunity set — the denominator is what the player could have got wrong, not a flat move count:
 
-## 16. Backend skeleton
+| Category | Opportunities |
+|---|---|
+| Tactical awareness | every meaningful move (see below) |
+| Endgame technique | moves played with ≤ 12 pieces on the board |
+| Time management | moves played under 25% of the clock |
+| Conversion | winning positions reached |
 
-A first-pass FastAPI skeleton implementing the three endpoints from Section 14 exists (`main.py`), with an in-memory job store (no Redis/db, consistent with Section 13) and the analysis pipeline broken into independently buildable stages:
+`severe_rate` is the per-category rate at which the category counts as a severe problem. A player at that rate scores 1.0.
+
+**Calibration (done).** The four constants were set by running the real pipeline over 15 Chess.com accounts sampled across the rating range (612 to 2127 blitz, three per 400-point band), plus super-GM anchors. Each constant is the **90th-percentile rate among players in the target band** (§5: 500-1800), so "severe" means *worse than roughly 9 in 10 comparable players* — which also gives the headline its meaning: your worst category is where you sit furthest out on the distribution for players like you.
+
+| Category | Observed median | Observed p90 | `severe_rate` |
+|---|---|---|---|
+| Tactical | 0.060 | 0.105 | **0.11** |
+| Endgame | 0.154 | 0.196 | **0.20** |
+| Time management | 0.241 | 0.350 | **0.35** |
+| Conversion | 0.422 | 0.600 | **0.60** |
+
+Time management is measured over players who clear its ratio gate (9 of 15), since the gate already excludes the rest.
+
+Validated at the top of the range — under the calibrated constants, two super-GM accounts land at the bottom of every distribution, where they belong:
+
+| | tactical | endgame | time | conversion |
+|---|---|---|---|---|
+| Hikaru (3410) | 0.14 | 0.43 | 0.30 | 0.10 |
+| Magnus (3300) | 0.15 | 0.56* | 0.00 | 0.09 |
+| *club median* | *0.55* | *0.72* | *0.69* | *0.70* |
+
+\* on a single instance, which the sample-size guard marks `insufficient` so it never reaches the headline. Under the old constants both accounts scored 1.0 on all four.
+
+The sweep is reproducible: `python scripts/calibrate.py sample | sweep | report` re-runs it end to end and prints the proposed constants, with the anonymized sample from this run kept in `backend/calibration/results.json`.
+
+The pre-calibration constants were all too strict by 2-4x — `endgame` at 0.10 sat *below the lowest rate any of the 15 players produced*, so every player scored 1.0 on it, including a world-championship-level blitz player.
+
+**What the sweep says about each signal's discriminating power** — worth knowing before trusting any one category:
+
+- **Tactical discriminates best.** Under-1100 players miss forcing shots at 1.76x the rate of 1600+ players (0.083 vs 0.047). This is the category the report can most defend.
+- **Endgame discriminates weakly** (1.34x) and its distribution is tight (0.100-0.233 across the whole range), so no choice of constant spreads it well. The ≥100cp-in-≤12-pieces trigger fires for nearly everyone; the threshold, not the constant, is what needs revisiting.
+- **Time management doesn't track rating at all** (0.91x — strong players flag as often as weak ones). That's consistent with the design: the ratio gate, not the rate, carries the signal, and time trouble isn't a beginner-specific failing.
+- **Conversion discriminates mildly** (1.26x), on the smallest denominators (11-17 winning positions per player), so its scores are the noisiest.
+
+One consequence to weigh in the UI: with p90 calibration a typical club player's scores land around 0.55-0.72, so an absolute-scale chart reads as "bad at everything". The ranking between categories is the meaningful part.
+
+*Superseded:* v1 originally specified `score = sum(cpl) / (instances × severity_normalizer)`, which reduces to `avg_cpl / severity_normalizer` — frequency cancels out, so one 300cp miss scored the same as thirty. Worse, a move only becomes an instance once it's already past a centipawn threshold, so the average was always high and every category pinned to 1.0. Running a super-GM's 20 blitz games through it returned "severe" in three of four categories. Severity now earns its keep by deciding what qualifies as an instance; the score is about frequency.
+
+**Two filters on what counts as a mistake at all**, both added after the first run against real games:
+
+- **Playing the engine's own move costs nothing**, by definition. Comparing two separate depth-limited analyses of adjacent positions produces real centipawn swings even when the player found the best move — a 254cp "blunder" for playing the exact move the engine wanted. That noise is loudest in sharp positions, which is precisely where the classifiers look.
+- **Already-decided positions don't count.** A move is only examined if there was something real to lose: the player wasn't already winning decisively and still winning (≥ +600 → still ≥ +300), and wasn't already lost (≤ -600). Without this, cleanly won games read as full of blunders. The filter lives in the shared move accessor, so it applies to the time-management buckets too — the flat dataset itself stays raw.
+
+## 16. Backend implementation status
+
+The full v1 backend pipeline is implemented behind the three endpoints from Section 14, with an in-memory job store (no Redis/db, consistent with Section 13):
 
 `fetch_game_counts` → `fetch_last_n_games` → `evaluate_games_with_stockfish` → `classify_weaknesses` → `map_recommendations` → `generate_llm_summary` → `build_report`
 
-Each stage matches the suggested build order from the original scoping discussion — Chess.com fetch first, then Stockfish evaluation, then the classifiers in Section 15, then recommendations, then the LLM summary + guardrail last.
+Each stage lives in its own module under `backend/app/` (`chesscom`, `engine`, `classify`, `recommend`, `summary`, `report`), with thresholds and tunables in `config.py` and 65 tests in `backend/tests/`.
 
-**Chess.com fetch stage — implemented.** `fetch_game_counts` and `fetch_last_n_games` are wired against the real Chess.com Published-Data API (`api.chess.com/pub`), with the following real API constraints baked in:
+**Chess.com fetch — implemented and verified against the live API.** The v1 constraints are baked in:
 
-- **No API key, but a descriptive User-Agent header is required** — Chess.com returns 403 without one. The header (app name + contact) needs to be set to real values before deploying.
-- **No "last N games" endpoint exists.** Games are exposed only as monthly archives (`/player/{username}/games/archives` → list of monthly URLs). Getting "last 20 games in a time control" means walking archives backward from the most recent month, filtering each month's games by the `time_class` field (`bullet`/`blitz`/`rapid`), until enough matching games are collected. This is the main reason the eligibility check and the analysis fetch share the same underlying archive-walking helper (`_iter_recent_games`) rather than being separate implementations.
-- **Username-not-found detection**: a 404 on the archives endpoint is how an unknown username is distinguished from a real user with zero games.
-- **Eligibility counts are capped** (at 3x `MIN_GAMES_REQUIRED` per time-control bucket) rather than walking a very active player's entire history — sufficient to confirm the ≥20-game bar from Section 7 without unnecessary API calls.
+- **No API key, but a descriptive User-Agent header is required** — Chess.com returns 403 without one. Set a real contact address via the `CHESS_COM_CONTACT` env var before deploying.
+- **No "last N games" endpoint exists.** Games are exposed only as monthly archives (`/player/{username}/games/archives`), so "last 20 games in a time control" means walking archives backward and filtering on `time_class`. Both the eligibility check and the analysis fetch share `_iter_recent_games`.
+- **Username-not-found detection**: a 404 on the archives endpoint distinguishes an unknown username from a real user with zero games.
+- **Bounded walking**: counts are capped at 3x `MIN_GAMES_REQUIRED` per bucket and the walk stops after 12 monthly archives, so an active player's whole history is never pulled for an eligibility check. A 60-second cache means the `/analyze` call right after `/eligibility` doesn't re-walk the same archives.
+- The earlier caveat about untested field names is resolved: archive URLs, `time_class`, `pgn`, `url` and the 404 behaviour were all confirmed against `api.chess.com` from a real environment.
 
-This fetch code could not be live-tested against Chess.com from within this build environment (network egress is restricted to a fixed domain allowlist that doesn't include `api.chess.com`), so it should be verified end-to-end — including exact archive JSON field names, which could drift from documentation — in a real deployment environment before relying on it.
+**Engine stage.** Every position is analysed exactly once, at `ENGINE_DEPTH` (default 12). Evals are recorded from the analyzed player's perspective on *every* ply, so the eval before and after a move gives that move's centipawn loss directly, and the same numbers double as the eval trajectory the conversion check reads. Evals are clamped to ±1500cp before centipawn loss is computed, so a move played in an already-lost position can't register as a five-figure blunder. Finished positions are scored from the game result rather than sent to the engine. The whole stage is time-boxed (`ENGINE_TIMEOUT_S`, default 300s) and a wedged engine is killed rather than waited on — surfacing as the `stockfish_timeout` failure from Section 14.
+
+**Implementation choices worth flagging against Section 15:**
+
+- *Forcing move* (tactical trigger) is detected as: a capture, a check, a promotion, or a move that creates a *new* favourable attack on an opponent piece — one that's undefended, or defended but worth more than its cheapest attacker. That's the "immediate material threat within 1 ply" clause, approximated without a static exchange evaluator.
+- *Time management* keeps the Section 15 ratio check as a **gate** rather than a score: the category scores 0 unless low-clock moves are at least 1.5x worse than unhurried ones, and when the gate is met the standard score formula is applied to the costly low-clock moves. A score of 0 with `confidence: ok` therefore means "we had the data, this isn't your problem" — which is different from, and more useful than, "insufficient".
+- *Conversion* severity is the size of the eval collapse (peak minus the lowest eval after it) rather than a centipawn-loss sum, with a larger `severity_normalizer` (600) to match. A game that was lost from a winning position produces a large drop naturally, with no special case.
+- The report payload carries one field beyond Section 14's shape: `summary_source` (`"llm"` or `"fallback"`), so a deterministic fallback paragraph is never mistaken for coach-written prose, and so guardrail catches are visible during testing per Section 11.
+
+**LLM summary + guardrail.** The model receives only computed scores, counts and the already-written recommendation text — never a PGN, move, opening or opponent. Its output is then validated two ways: every number in the summary must appear in the facts it was given, and a blocklist of specificity it has no basis for (opening names, tactical motifs, ratings, opponents) is rejected unless the term appeared in the facts. A rejected summary is retried once with the violations fed back, then replaced by a deterministic paragraph. If no API key is configured the pipeline falls back silently rather than failing the job.
+
+Two deliberate allowances in the number check, both found by running real summaries through it:
+
+- A 0-1 score restated as a percentage passes, since that's a restatement rather than a new claim.
+- Numbers are also matched **spelled out** ("in seven spots" was a real model output that digit matching alone waved through), but only from *four* upward. "One", "two" and "three" read as ordinary prose far more often than as claims — "do those two things", "one of those" — and validating them would reject good summaries.
+
+**Not yet verified end to end:** the engine stage has only run against a stub UCI engine (a Stockfish binary wasn't installable in the build environment), and the live LLM call has only run against a stubbed client — no API key was configured. Both paths are covered by tests; both want one real run before deploying.
 
 ## 17. Future phases (not v1)
 
