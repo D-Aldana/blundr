@@ -237,22 +237,34 @@ score = min(1.0, (sum of centipawn loss for qualifying instances) / (instance co
 
 `severity_normalizer` is a per-category constant (e.g., 300 for tactical, 200 for endgame) chosen so scores land in a roughly comparable range across categories. Flagged explicitly as a known simplification to revisit once real game data is available to calibrate against.
 
-## 16. Backend skeleton
+## 16. Backend implementation status
 
-A first-pass FastAPI skeleton implementing the three endpoints from Section 14 exists (`main.py`), with an in-memory job store (no Redis/db, consistent with Section 13) and the analysis pipeline broken into independently buildable stages:
+The full v1 backend pipeline is implemented behind the three endpoints from Section 14, with an in-memory job store (no Redis/db, consistent with Section 13):
 
 `fetch_game_counts` → `fetch_last_n_games` → `evaluate_games_with_stockfish` → `classify_weaknesses` → `map_recommendations` → `generate_llm_summary` → `build_report`
 
-Each stage matches the suggested build order from the original scoping discussion — Chess.com fetch first, then Stockfish evaluation, then the classifiers in Section 15, then recommendations, then the LLM summary + guardrail last.
+Each stage lives in its own module under `backend/app/` (`chesscom`, `engine`, `classify`, `recommend`, `summary`, `report`), with thresholds and tunables in `config.py` and 65 tests in `backend/tests/`.
 
-**Chess.com fetch stage — implemented.** `fetch_game_counts` and `fetch_last_n_games` are wired against the real Chess.com Published-Data API (`api.chess.com/pub`), with the following real API constraints baked in:
+**Chess.com fetch — implemented and verified against the live API.** The v1 constraints are baked in:
 
-- **No API key, but a descriptive User-Agent header is required** — Chess.com returns 403 without one. The header (app name + contact) needs to be set to real values before deploying.
-- **No "last N games" endpoint exists.** Games are exposed only as monthly archives (`/player/{username}/games/archives` → list of monthly URLs). Getting "last 20 games in a time control" means walking archives backward from the most recent month, filtering each month's games by the `time_class` field (`bullet`/`blitz`/`rapid`), until enough matching games are collected. This is the main reason the eligibility check and the analysis fetch share the same underlying archive-walking helper (`_iter_recent_games`) rather than being separate implementations.
-- **Username-not-found detection**: a 404 on the archives endpoint is how an unknown username is distinguished from a real user with zero games.
-- **Eligibility counts are capped** (at 3x `MIN_GAMES_REQUIRED` per time-control bucket) rather than walking a very active player's entire history — sufficient to confirm the ≥20-game bar from Section 7 without unnecessary API calls.
+- **No API key, but a descriptive User-Agent header is required** — Chess.com returns 403 without one. Set a real contact address via the `CHESS_COM_CONTACT` env var before deploying.
+- **No "last N games" endpoint exists.** Games are exposed only as monthly archives (`/player/{username}/games/archives`), so "last 20 games in a time control" means walking archives backward and filtering on `time_class`. Both the eligibility check and the analysis fetch share `_iter_recent_games`.
+- **Username-not-found detection**: a 404 on the archives endpoint distinguishes an unknown username from a real user with zero games.
+- **Bounded walking**: counts are capped at 3x `MIN_GAMES_REQUIRED` per bucket and the walk stops after 12 monthly archives, so an active player's whole history is never pulled for an eligibility check. A 60-second cache means the `/analyze` call right after `/eligibility` doesn't re-walk the same archives.
+- The earlier caveat about untested field names is resolved: archive URLs, `time_class`, `pgn`, `url` and the 404 behaviour were all confirmed against `api.chess.com` from a real environment.
 
-This fetch code could not be live-tested against Chess.com from within this build environment (network egress is restricted to a fixed domain allowlist that doesn't include `api.chess.com`), so it should be verified end-to-end — including exact archive JSON field names, which could drift from documentation — in a real deployment environment before relying on it.
+**Engine stage.** Every position is analysed exactly once, at `ENGINE_DEPTH` (default 12). Evals are recorded from the analyzed player's perspective on *every* ply, so the eval before and after a move gives that move's centipawn loss directly, and the same numbers double as the eval trajectory the conversion check reads. Evals are clamped to ±1500cp before centipawn loss is computed, so a move played in an already-lost position can't register as a five-figure blunder. Finished positions are scored from the game result rather than sent to the engine. The whole stage is time-boxed (`ENGINE_TIMEOUT_S`, default 300s) and a wedged engine is killed rather than waited on — surfacing as the `stockfish_timeout` failure from Section 14.
+
+**Implementation choices worth flagging against Section 15:**
+
+- *Forcing move* (tactical trigger) is detected as: a capture, a check, a promotion, or a move that creates a *new* favourable attack on an opponent piece — one that's undefended, or defended but worth more than its cheapest attacker. That's the "immediate material threat within 1 ply" clause, approximated without a static exchange evaluator.
+- *Time management* keeps the Section 15 ratio check as a **gate** rather than a score: the category scores 0 unless low-clock moves are at least 1.5x worse than unhurried ones, and when the gate is met the standard score formula is applied to the costly low-clock moves. A score of 0 with `confidence: ok` therefore means "we had the data, this isn't your problem" — which is different from, and more useful than, "insufficient".
+- *Conversion* severity is the size of the eval collapse (peak minus the lowest eval after it) rather than a centipawn-loss sum, with a larger `severity_normalizer` (600) to match. A game that was lost from a winning position produces a large drop naturally, with no special case.
+- The report payload carries one field beyond Section 14's shape: `summary_source` (`"llm"` or `"fallback"`), so a deterministic fallback paragraph is never mistaken for coach-written prose, and so guardrail catches are visible during testing per Section 11.
+
+**LLM summary + guardrail.** The model receives only computed scores, counts and the already-written recommendation text — never a PGN, move, opening or opponent. Its output is then validated two ways: every number in the summary must appear in the facts it was given (a 0-1 score restated as a percentage is allowed), and a blocklist of specificity it has no basis for (opening names, tactical motifs, ratings, opponents) is rejected unless the term appeared in the facts. A rejected summary is retried once with the violations fed back, then replaced by a deterministic paragraph. If no API key is configured the pipeline falls back silently rather than failing the job.
+
+**Not yet verified end to end:** the engine stage has only run against a stub UCI engine (a Stockfish binary wasn't installable in the build environment), and the live LLM call has only run against a stubbed client — no API key was configured. Both paths are covered by tests; both want one real run before deploying.
 
 ## 17. Future phases (not v1)
 

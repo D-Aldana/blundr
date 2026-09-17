@@ -1,0 +1,129 @@
+from app import config
+from app.classify import (
+    classify_conversion,
+    classify_endgame,
+    classify_tactical,
+    classify_time_management,
+    classify_weaknesses,
+)
+from conftest import make_row
+
+
+def test_tactical_counts_only_big_misses_on_forcing_moves():
+    rows = [
+        make_row(cpl=200, best_is_forcing=True),   # counts
+        make_row(cpl=400, best_is_forcing=True),   # counts
+        make_row(cpl=140, best_is_forcing=True),   # under threshold
+        make_row(cpl=300, best_is_forcing=False),  # quiet best move
+        make_row(cpl=None, is_player_move=False, best_is_forcing=True),  # opponent
+    ]
+    result = classify_tactical(rows)
+    assert result.instances == 2
+    assert result.details["avg_cpl"] == 300
+    assert result.score == round((200 + 400) / (2 * 300), 10)
+
+
+def test_endgame_requires_low_piece_count():
+    rows = [
+        make_row(cpl=120, piece_count=10),
+        make_row(cpl=150, piece_count=12),
+        make_row(cpl=400, piece_count=13),  # too many pieces
+        make_row(cpl=90, piece_count=6),    # under threshold
+    ]
+    result = classify_endgame(rows)
+    assert result.instances == 2
+    assert result.confidence == "insufficient"
+
+
+def test_sample_size_guard_confidence_tiers():
+    def tactical_with(n):
+        rows = [make_row(cpl=200, best_is_forcing=True) for _ in range(n)]
+        return classify_tactical(rows).confidence
+
+    assert tactical_with(2) == "insufficient"
+    assert tactical_with(3) == "low"
+    assert tactical_with(5) == "low"
+    assert tactical_with(6) == "ok"
+
+
+def test_score_is_capped_at_one():
+    rows = [make_row(cpl=1500, best_is_forcing=True) for _ in range(4)]
+    assert classify_tactical(rows).score == 1.0
+
+
+def test_time_management_flags_only_when_pressure_amplifies_errors():
+    calm = [make_row(cpl=40, clock_pct=0.8) for _ in range(10)]
+    rushed = [make_row(cpl=200, clock_pct=0.1) for _ in range(6)]
+    result = classify_time_management(calm + rushed)
+
+    assert result.details["ratio"] == 5.0
+    assert result.details["gate_met"] is True
+    assert result.instances == 6
+    assert result.score > 0
+
+
+def test_time_management_not_flagged_when_errors_are_uniform():
+    calm = [make_row(cpl=150, clock_pct=0.8) for _ in range(10)]
+    rushed = [make_row(cpl=150, clock_pct=0.1) for _ in range(6)]
+    result = classify_time_management(calm + rushed)
+
+    assert result.details["ratio"] == 1.0
+    assert result.details["gate_met"] is False
+    assert result.score == 0.0
+
+
+def test_time_management_needs_enough_low_clock_moves():
+    calm = [make_row(cpl=20, clock_pct=0.9) for _ in range(10)]
+    rushed = [make_row(cpl=300, clock_pct=0.05) for _ in range(4)]
+    result = classify_time_management(calm + rushed)
+
+    assert result.details["low_bucket_moves"] == 4
+    assert result.details["gate_met"] is False
+    assert result.score == 0.0
+
+
+def test_time_management_ignores_games_without_clock_data():
+    rows = [make_row(cpl=300) for _ in range(10)]
+    result = classify_time_management(rows)
+    assert result.instances == 0
+    assert result.confidence == "insufficient"
+
+
+def _game(index, evals, result):
+    return [
+        make_row(game_index=index, ply=i + 1, eval_after_cp=cp, result=result)
+        for i, cp in enumerate(evals)
+    ]
+
+
+def test_conversion_counts_once_per_blown_game():
+    rows = (
+        _game(0, [50, 400, 350, -200], "loss")   # blown
+        + _game(1, [20, 500, 600, 800], "win")   # converted
+        + _game(2, [10, 120, 90, 0], "draw")     # never winning
+        + _game(3, [0, 350, 340, 330], "draw")   # winning, drawn anyway
+    )
+    result = classify_conversion(rows)
+
+    assert result.instances == 2
+    assert result.details["games_reached_winning"] == 3
+    assert result.details["games_converted"] == 1
+    assert {i["game_index"] for i in result.details["examples"]} == {0, 3}
+
+
+def test_conversion_ignores_peak_on_final_move():
+    rows = _game(0, [0, 100, 900], "win")
+    assert classify_conversion(rows).instances == 0
+
+
+def test_classify_returns_all_four_categories():
+    names = [c.name for c in classify_weaknesses([make_row()])]
+    assert names == ["tactical", "endgame", "time_management", "conversion"]
+
+
+def test_thresholds_match_the_prd():
+    assert config.TACTICAL_CPL_THRESHOLD == 150
+    assert config.ENDGAME_CPL_THRESHOLD == 100
+    assert config.ENDGAME_MAX_PIECES == 12
+    assert config.TIME_RATIO_TRIGGER == 1.5
+    assert config.CONVERSION_WINNING_CP == 300
