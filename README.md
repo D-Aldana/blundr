@@ -84,6 +84,22 @@ All values are optional — every one has a working default.
 | `SUMMARY_MODEL` | `claude-opus-5` | |
 | `ALLOWED_ORIGINS` | `http://localhost:5173` | Comma-separated CORS origins |
 
+### Recalibrating the weakness scores
+
+Category scores are rates measured against per-category constants in
+`config.SEVERE_RATE`, set from real accounts across the rating range. To
+re-derive them:
+
+```bash
+python scripts/calibrate.py sample    # bucket club members by blitz rating
+python scripts/calibrate.py sweep     # run the pipeline over the sample (~1 min/player)
+python scripts/calibrate.py report    # rate distributions + proposed constants
+```
+
+The anonymized sample behind the current constants is in `calibration/`.
+See `docs/prd.md` §15 for what the numbers mean and which categories
+discriminate well.
+
 ## API
 
 Three endpoints, per PRD §14:

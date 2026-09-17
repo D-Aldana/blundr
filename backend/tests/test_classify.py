@@ -64,11 +64,27 @@ def test_score_is_capped_at_one():
 
 
 def test_an_elite_error_rate_does_not_read_as_severe():
-    # 16 misses across ~870 meaningful moves — a real super-GM sample.
+    # 16 misses across ~870 meaningful moves — a real super-GM sample, well
+    # under the calibrated severe rate.
     rows = [make_row(cpl=330, best_is_forcing=True) for _ in range(16)]
     rows += [make_row(cpl=20) for _ in range(853)]
-    score = classify_tactical(rows).score
-    assert 0.2 < score < 0.4
+    assert classify_tactical(rows).score < 0.25
+
+
+def test_a_typical_club_rate_lands_mid_range():
+    # The sweep's median club player: ~6 misses per 100 meaningful moves.
+    rows = [make_row(cpl=300, best_is_forcing=True) for _ in range(30)]
+    rows += [make_row(cpl=20) for _ in range(470)]
+    assert 0.4 < classify_tactical(rows).score < 0.7
+
+
+def test_severe_rates_are_above_every_rate_seen_at_the_median():
+    # Guards the failure that started this: a constant set below the typical
+    # observed rate pins every player at 1.0.
+    assert config.SEVERE_RATE["tactical"] > 0.06
+    assert config.SEVERE_RATE["endgame"] > 0.15
+    assert config.SEVERE_RATE["time_management"] > 0.22
+    assert config.SEVERE_RATE["conversion"] > 0.43
 
 
 def test_time_management_flags_only_when_pressure_amplifies_errors():

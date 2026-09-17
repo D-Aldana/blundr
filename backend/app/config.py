@@ -57,14 +57,16 @@ CONVERSION_LOST_CP = 100
 # move, time management is per rushed move, conversion is per winning position
 # reached. A player at this rate scores 1.0.
 #
-# First-pass constants — the shape of the formula is sound, but these numbers
-# want calibrating against accounts spread across the rating range
-# (PRD section 15).
+# Calibrated against 15 real accounts from 612 to 2127 blitz, plus super-GM
+# anchors: each value is the 90th-percentile rate among players in the PRD's
+# target band, so "severe" means worse than roughly 9 in 10 comparable players
+# (PRD section 15). Time management is measured over players who clear its
+# ratio gate, since the gate already excludes the rest.
 SEVERE_RATE = {
-    "tactical": 0.06,  # 6 missed shots per 100 moves
-    "endgame": 0.10,  # 10 slips per 100 endgame moves
-    "time_management": 0.15,  # 15 rushed blunders per 100 low-clock moves
-    "conversion": 0.50,  # half of all winning positions thrown away
+    "tactical": 0.11,  # 11 missed shots per 100 moves
+    "endgame": 0.20,  # 20 slips per 100 endgame moves
+    "time_management": 0.35,  # 35 blunders per 100 low-clock moves
+    "conversion": 0.60,  # 3 of every 5 winning positions thrown away
 }
 
 # --- Sample-size guard -------------------------------------------------------

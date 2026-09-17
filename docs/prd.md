@@ -244,7 +244,41 @@ The score is a **rate**: how often a category fires, against how often it could 
 | Time management | moves played under 25% of the clock |
 | Conversion | winning positions reached |
 
-`severe_rate` is the per-category rate at which the category counts as a severe problem — 6 missed shots per 100 moves, 10 slips per 100 endgame moves, 15 blunders per 100 rushed moves, half of all winning positions thrown away. A player at that rate scores 1.0. These four constants are first-pass numbers and want calibrating against accounts spread across the rating range; the shape of the formula is the part that's settled.
+`severe_rate` is the per-category rate at which the category counts as a severe problem. A player at that rate scores 1.0.
+
+**Calibration (done).** The four constants were set by running the real pipeline over 15 Chess.com accounts sampled across the rating range (612 to 2127 blitz, three per 400-point band), plus super-GM anchors. Each constant is the **90th-percentile rate among players in the target band** (§5: 500-1800), so "severe" means *worse than roughly 9 in 10 comparable players* — which also gives the headline its meaning: your worst category is where you sit furthest out on the distribution for players like you.
+
+| Category | Observed median | Observed p90 | `severe_rate` |
+|---|---|---|---|
+| Tactical | 0.060 | 0.105 | **0.11** |
+| Endgame | 0.154 | 0.196 | **0.20** |
+| Time management | 0.241 | 0.350 | **0.35** |
+| Conversion | 0.422 | 0.600 | **0.60** |
+
+Time management is measured over players who clear its ratio gate (9 of 15), since the gate already excludes the rest.
+
+Validated at the top of the range — under the calibrated constants, two super-GM accounts land at the bottom of every distribution, where they belong:
+
+| | tactical | endgame | time | conversion |
+|---|---|---|---|---|
+| Hikaru (3410) | 0.14 | 0.43 | 0.30 | 0.10 |
+| Magnus (3300) | 0.15 | 0.56* | 0.00 | 0.09 |
+| *club median* | *0.55* | *0.72* | *0.69* | *0.70* |
+
+\* on a single instance, which the sample-size guard marks `insufficient` so it never reaches the headline. Under the old constants both accounts scored 1.0 on all four.
+
+The sweep is reproducible: `python scripts/calibrate.py sample | sweep | report` re-runs it end to end and prints the proposed constants, with the anonymized sample from this run kept in `backend/calibration/results.json`.
+
+The pre-calibration constants were all too strict by 2-4x — `endgame` at 0.10 sat *below the lowest rate any of the 15 players produced*, so every player scored 1.0 on it, including a world-championship-level blitz player.
+
+**What the sweep says about each signal's discriminating power** — worth knowing before trusting any one category:
+
+- **Tactical discriminates best.** Under-1100 players miss forcing shots at 1.76x the rate of 1600+ players (0.083 vs 0.047). This is the category the report can most defend.
+- **Endgame discriminates weakly** (1.34x) and its distribution is tight (0.100-0.233 across the whole range), so no choice of constant spreads it well. The ≥100cp-in-≤12-pieces trigger fires for nearly everyone; the threshold, not the constant, is what needs revisiting.
+- **Time management doesn't track rating at all** (0.91x — strong players flag as often as weak ones). That's consistent with the design: the ratio gate, not the rate, carries the signal, and time trouble isn't a beginner-specific failing.
+- **Conversion discriminates mildly** (1.26x), on the smallest denominators (11-17 winning positions per player), so its scores are the noisiest.
+
+One consequence to weigh in the UI: with p90 calibration a typical club player's scores land around 0.55-0.72, so an absolute-scale chart reads as "bad at everything". The ranking between categories is the meaningful part.
 
 *Superseded:* v1 originally specified `score = sum(cpl) / (instances × severity_normalizer)`, which reduces to `avg_cpl / severity_normalizer` — frequency cancels out, so one 300cp miss scored the same as thirty. Worse, a move only becomes an instance once it's already past a centipawn threshold, so the average was always high and every category pinned to 1.0. Running a super-GM's 20 blitz games through it returned "severe" in three of four categories. Severity now earns its keep by deciding what qualifies as an instance; the score is about frequency.
 

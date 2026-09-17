@@ -1,0 +1,332 @@
+[
+ {
+  "username": "player_01",
+  "rating": 612,
+  "meaningful_moves": 435,
+  "tactical": {
+   "n": 43,
+   "rate": 0.0989
+  },
+  "endgame": {
+   "n": 6,
+   "rate": 0.1333
+  },
+  "time_management": {
+   "n": 25,
+   "rate": 0.4237,
+   "gate": true
+  },
+  "conversion": {
+   "n": 9,
+   "rate": 0.5294
+  }
+ },
+ {
+  "username": "player_02",
+  "rating": 649,
+  "meaningful_moves": 447,
+  "tactical": {
+   "n": 47,
+   "rate": 0.1051
+  },
+  "endgame": {
+   "n": 3,
+   "rate": 0.1
+  },
+  "time_management": {
+   "n": 3,
+   "rate": 0.1579,
+   "gate": false
+  },
+  "conversion": {
+   "n": 5,
+   "rate": 0.3571
+  }
+ },
+ {
+  "username": "player_03",
+  "rating": 821,
+  "meaningful_moves": 492,
+  "tactical": {
+   "n": 31,
+   "rate": 0.063
+  },
+  "endgame": {
+   "n": 7,
+   "rate": 0.2333
+  },
+  "time_management": {
+   "n": 7,
+   "rate": 0.2414,
+   "gate": true
+  },
+  "conversion": {
+   "n": 12,
+   "rate": 0.75
+  }
+ },
+ {
+  "username": "player_04",
+  "rating": 920,
+  "meaningful_moves": 510,
+  "tactical": {
+   "n": 27,
+   "rate": 0.0529
+  },
+  "endgame": {
+   "n": 10,
+   "rate": 0.1639
+  },
+  "time_management": {
+   "n": 17,
+   "rate": 0.1753,
+   "gate": true
+  },
+  "conversion": {
+   "n": 6,
+   "rate": 0.5
+  }
+ },
+ {
+  "username": "player_05",
+  "rating": 1010,
+  "meaningful_moves": 547,
+  "tactical": {
+   "n": 58,
+   "rate": 0.106
+  },
+  "endgame": {
+   "n": 12,
+   "rate": 0.1846
+  },
+  "time_management": {
+   "n": 16,
+   "rate": 0.2424,
+   "gate": false
+  },
+  "conversion": {
+   "n": 7,
+   "rate": 0.3889
+  }
+ },
+ {
+  "username": "player_06",
+  "rating": 1051,
+  "meaningful_moves": 552,
+  "tactical": {
+   "n": 40,
+   "rate": 0.0725
+  },
+  "endgame": {
+   "n": 9,
+   "rate": 0.1957
+  },
+  "time_management": {
+   "n": 0,
+   "rate": 0.0,
+   "gate": false
+  },
+  "conversion": {
+   "n": 8,
+   "rate": 0.5714
+  }
+ },
+ {
+  "username": "player_07",
+  "rating": 1210,
+  "meaningful_moves": 529,
+  "tactical": {
+   "n": 27,
+   "rate": 0.051
+  },
+  "endgame": {
+   "n": 6,
+   "rate": 0.1714
+  },
+  "time_management": {
+   "n": 7,
+   "rate": 0.1489,
+   "gate": false
+  },
+  "conversion": {
+   "n": 4,
+   "rate": 0.2667
+  }
+ },
+ {
+  "username": "player_08",
+  "rating": 1364,
+  "meaningful_moves": 517,
+  "tactical": {
+   "n": 30,
+   "rate": 0.058
+  },
+  "endgame": {
+   "n": 4,
+   "rate": 0.1538
+  },
+  "time_management": {
+   "n": 12,
+   "rate": 0.2308,
+   "gate": false
+  },
+  "conversion": {
+   "n": 5,
+   "rate": 0.4545
+  }
+ },
+ {
+  "username": "player_09",
+  "rating": 1434,
+  "meaningful_moves": 429,
+  "tactical": {
+   "n": 34,
+   "rate": 0.0793
+  },
+  "endgame": {
+   "n": 0,
+   "rate": null
+  },
+  "time_management": {
+   "n": 6,
+   "rate": 0.25,
+   "gate": true
+  },
+  "conversion": {
+   "n": 4,
+   "rate": 0.2857
+  }
+ },
+ {
+  "username": "player_10",
+  "rating": 1600,
+  "meaningful_moves": 552,
+  "tactical": {
+   "n": 7,
+   "rate": 0.0127
+  },
+  "endgame": {
+   "n": 3,
+   "rate": 0.1111
+  },
+  "time_management": {
+   "n": 13,
+   "rate": 0.0818,
+   "gate": true
+  },
+  "conversion": {
+   "n": 4,
+   "rate": 0.2857
+  }
+ },
+ {
+  "username": "player_11",
+  "rating": 1718,
+  "meaningful_moves": 659,
+  "tactical": {
+   "n": 36,
+   "rate": 0.0546
+  },
+  "endgame": {
+   "n": 4,
+   "rate": 0.1176
+  },
+  "time_management": {
+   "n": 14,
+   "rate": 0.35,
+   "gate": true
+  },
+  "conversion": {
+   "n": 9,
+   "rate": 0.6
+  }
+ },
+ {
+  "username": "player_12",
+  "rating": 1770,
+  "meaningful_moves": 512,
+  "tactical": {
+   "n": 21,
+   "rate": 0.041
+  },
+  "endgame": {
+   "n": 3,
+   "rate": 0.12
+  },
+  "time_management": {
+   "n": 8,
+   "rate": 0.186,
+   "gate": true
+  },
+  "conversion": {
+   "n": 4,
+   "rate": 0.2667
+  }
+ },
+ {
+  "username": "player_13",
+  "rating": 1904,
+  "meaningful_moves": 560,
+  "tactical": {
+   "n": 24,
+   "rate": 0.0429
+  },
+  "endgame": {
+   "n": 8,
+   "rate": 0.1231
+  },
+  "time_management": {
+   "n": 18,
+   "rate": 0.1731,
+   "gate": false
+  },
+  "conversion": {
+   "n": 5,
+   "rate": 0.3125
+  }
+ },
+ {
+  "username": "player_14",
+  "rating": 1906,
+  "meaningful_moves": 606,
+  "tactical": {
+   "n": 40,
+   "rate": 0.066
+  },
+  "endgame": {
+   "n": 5,
+   "rate": 0.1429
+  },
+  "time_management": {
+   "n": 10,
+   "rate": 0.3448,
+   "gate": true
+  },
+  "conversion": {
+   "n": 6,
+   "rate": 0.5
+  }
+ },
+ {
+  "username": "player_15",
+  "rating": 2127,
+  "meaningful_moves": 709,
+  "tactical": {
+   "n": 47,
+   "rate": 0.0663
+  },
+  "endgame": {
+   "n": 16,
+   "rate": 0.1404
+  },
+  "time_management": {
+   "n": 25,
+   "rate": 0.2212,
+   "gate": true
+  },
+  "conversion": {
+   "n": 8,
+   "rate": 0.5
+  }
+ }
+]
