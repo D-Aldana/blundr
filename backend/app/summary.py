@@ -43,6 +43,19 @@ BANNED_TERMS = [
 
 NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
 
+# The model does spell counts out ("in seven spots"), which digit matching
+# alone would wave through. One/two/three are left out on purpose — they read
+# as ordinary prose ("one of those", "do those two things") far more often
+# than as claims, and rejecting them would fail good summaries.
+NUMBER_WORDS = {
+    "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+    "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+    "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90, "hundred": 100,
+}
+WORD_RE = re.compile(r"\b(" + "|".join(NUMBER_WORDS) + r")\b", re.IGNORECASE)
+
 
 def build_facts(
     categories: list[CategoryResult],
@@ -92,6 +105,9 @@ def validate_summary(summary: str, facts: str) -> list[str]:
     for raw in NUMBER_RE.findall(summary):
         if _norm(float(raw)) not in allowed:
             violations.append(f"unsupported number: {raw}")
+    for word in WORD_RE.findall(summary):
+        if _norm(NUMBER_WORDS[word.lower()]) not in allowed:
+            violations.append(f"unsupported number: {word}")
 
     lowered = summary.lower()
     facts_lowered = facts.lower()

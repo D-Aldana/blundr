@@ -86,6 +86,16 @@ def _best_move(info: dict) -> Optional[chess.Move]:
     return pv[0] if pv else None
 
 
+def _centipawn_loss(eval_before: int, eval_after: int, played_best: bool) -> int:
+    """Playing the engine's own choice costs nothing by definition. Scoring it
+    otherwise just measures search instability between two separate
+    depth-limited analyses, which is loudest in exactly the sharp positions
+    the classifiers care about."""
+    if played_best:
+        return 0
+    return max(0, eval_before - eval_after)
+
+
 def _terminal_eval(board: chess.Board, color: bool) -> int:
     """Eval of a finished position, so we never ask the engine about one."""
     outcome = board.outcome(claim_draw=True)
@@ -153,6 +163,7 @@ async def evaluate_game(
         best_san = board.san(best) if best else None
         forcing = is_forcing(board, best) if (is_player_move and best) else None
         san = board.san(move)
+        played_best = best is not None and move == best
         piece_count = len(board.piece_map())
         move_number = board.fullmove_number
 
@@ -182,7 +193,9 @@ async def evaluate_game(
                 piece_count=piece_count,
                 eval_before_cp=eval_before,
                 eval_after_cp=eval_after,
-                cpl=max(0, eval_before - eval_after) if is_player_move else None,
+                cpl=_centipawn_loss(eval_before, eval_after, played_best)
+                if is_player_move
+                else None,
                 best_move_san=best_san,
                 best_is_forcing=forcing,
                 clock_remaining_s=clock if is_player_move else None,

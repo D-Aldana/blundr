@@ -67,7 +67,11 @@ installed.
 
 ### Configuration
 
-All optional — every value has a working default.
+Copy `.env.example` to `.env` at the repo root and fill in what you need —
+it's loaded automatically at startup and is gitignored. A real environment
+variable always wins over the file.
+
+All values are optional — every one has a working default.
 
 | Variable | Default | Notes |
 |---|---|---|

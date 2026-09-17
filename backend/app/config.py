@@ -1,6 +1,14 @@
 """Tunable constants for the v1 pipeline (PRD sections 7, 13, 15)."""
 
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load .env from the repo root, then from wherever the server was started.
+# Neither overrides a variable already set in the real environment.
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+load_dotenv()
 
 MIN_GAMES_REQUIRED = 20
 TIME_CONTROLS = ("bullet", "blitz", "rapid")
@@ -29,6 +37,10 @@ EVAL_CLAMP_CP = 1500
 MATE_SCORE_CP = 10000
 
 # --- Classifier thresholds (PRD section 15) ----------------------------------
+# A position this lopsided is already decided; drifting within it isn't a
+# weakness, it's engine noise in a game that was over.
+DECISIVE_CP = 600
+
 TACTICAL_CPL_THRESHOLD = 150
 ENDGAME_CPL_THRESHOLD = 100
 ENDGAME_MAX_PIECES = 12
@@ -40,13 +52,19 @@ TIME_MIN_LOW_MOVES = 5
 CONVERSION_WINNING_CP = 300
 CONVERSION_LOST_CP = 100
 
-# Per-category constant that puts scores in a roughly comparable 0-1 range.
-# Known simplification — recalibrate against real game data (PRD section 15).
-SEVERITY_NORMALIZER = {
-    "tactical": 300,
-    "endgame": 200,
-    "time_management": 250,
-    "conversion": 600,
+# The rate at which a category counts as a severe problem, as a fraction of
+# that category's own opportunities: tactical and endgame are per qualifying
+# move, time management is per rushed move, conversion is per winning position
+# reached. A player at this rate scores 1.0.
+#
+# First-pass constants — the shape of the formula is sound, but these numbers
+# want calibrating against accounts spread across the rating range
+# (PRD section 15).
+SEVERE_RATE = {
+    "tactical": 0.06,  # 6 missed shots per 100 moves
+    "endgame": 0.10,  # 10 slips per 100 endgame moves
+    "time_management": 0.15,  # 15 rushed blunders per 100 low-clock moves
+    "conversion": 0.50,  # half of all winning positions thrown away
 }
 
 # --- Sample-size guard -------------------------------------------------------

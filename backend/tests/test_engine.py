@@ -129,3 +129,19 @@ async def test_terminal_position_is_scored_without_the_engine():
 
     assert rows[-1].eval_after_cp == config.EVAL_CLAMP_CP  # mate, from Q's view
     assert engine.calls == 4  # the mated position is never sent to the engine
+
+
+async def test_playing_the_engines_own_move_costs_nothing():
+    game = parse_pgn(PGN_WITH_CLOCKS)
+    # The stub always names the played move as best, while the evals drift —
+    # exactly the search instability that used to score as a blunder.
+    best_by_fen = {}
+    board = game.board()
+    for node in game.mainline():
+        best_by_fen[board.fen()] = node.move
+        board.push(node.move)
+
+    engine = FakeEngine([1105, -851, 1105, -851, 1105, -851, 1105], best_by_fen)
+    rows = await evaluate_game(engine, game, "TestPlayer", game_index=0)
+
+    assert all(r.cpl == 0 for r in rows if r.is_player_move)

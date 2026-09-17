@@ -229,13 +229,29 @@ Concrete, deterministic rules behind the 4 category scores in Section 9. These a
 - 6+ instances → `confidence: "ok"`
 - Below 3 → `confidence: "insufficient"` — category omitted from the headline/recommendation logic but still shown in the UI as "not enough data yet," consistent with Section 5's guard.
 
-**Category score formula (v1 heuristic):**
+**Category score formula (v1):**
 
 ```
-score = min(1.0, (sum of centipawn loss for qualifying instances) / (instance count × severity_normalizer))
+score = min(1.0, (instances / opportunities) / severe_rate)
 ```
 
-`severity_normalizer` is a per-category constant (e.g., 300 for tactical, 200 for endgame) chosen so scores land in a roughly comparable range across categories. Flagged explicitly as a known simplification to revisit once real game data is available to calibrate against.
+The score is a **rate**: how often a category fires, against how often it could have. Each category has its own opportunity set — the denominator is what the player could have got wrong, not a flat move count:
+
+| Category | Opportunities |
+|---|---|
+| Tactical awareness | every meaningful move (see below) |
+| Endgame technique | moves played with ≤ 12 pieces on the board |
+| Time management | moves played under 25% of the clock |
+| Conversion | winning positions reached |
+
+`severe_rate` is the per-category rate at which the category counts as a severe problem — 6 missed shots per 100 moves, 10 slips per 100 endgame moves, 15 blunders per 100 rushed moves, half of all winning positions thrown away. A player at that rate scores 1.0. These four constants are first-pass numbers and want calibrating against accounts spread across the rating range; the shape of the formula is the part that's settled.
+
+*Superseded:* v1 originally specified `score = sum(cpl) / (instances × severity_normalizer)`, which reduces to `avg_cpl / severity_normalizer` — frequency cancels out, so one 300cp miss scored the same as thirty. Worse, a move only becomes an instance once it's already past a centipawn threshold, so the average was always high and every category pinned to 1.0. Running a super-GM's 20 blitz games through it returned "severe" in three of four categories. Severity now earns its keep by deciding what qualifies as an instance; the score is about frequency.
+
+**Two filters on what counts as a mistake at all**, both added after the first run against real games:
+
+- **Playing the engine's own move costs nothing**, by definition. Comparing two separate depth-limited analyses of adjacent positions produces real centipawn swings even when the player found the best move — a 254cp "blunder" for playing the exact move the engine wanted. That noise is loudest in sharp positions, which is precisely where the classifiers look.
+- **Already-decided positions don't count.** A move is only examined if there was something real to lose: the player wasn't already winning decisively and still winning (≥ +600 → still ≥ +300), and wasn't already lost (≤ -600). Without this, cleanly won games read as full of blunders. The filter lives in the shared move accessor, so it applies to the time-management buckets too — the flat dataset itself stays raw.
 
 ## 16. Backend implementation status
 
@@ -262,7 +278,12 @@ Each stage lives in its own module under `backend/app/` (`chesscom`, `engine`, `
 - *Conversion* severity is the size of the eval collapse (peak minus the lowest eval after it) rather than a centipawn-loss sum, with a larger `severity_normalizer` (600) to match. A game that was lost from a winning position produces a large drop naturally, with no special case.
 - The report payload carries one field beyond Section 14's shape: `summary_source` (`"llm"` or `"fallback"`), so a deterministic fallback paragraph is never mistaken for coach-written prose, and so guardrail catches are visible during testing per Section 11.
 
-**LLM summary + guardrail.** The model receives only computed scores, counts and the already-written recommendation text — never a PGN, move, opening or opponent. Its output is then validated two ways: every number in the summary must appear in the facts it was given (a 0-1 score restated as a percentage is allowed), and a blocklist of specificity it has no basis for (opening names, tactical motifs, ratings, opponents) is rejected unless the term appeared in the facts. A rejected summary is retried once with the violations fed back, then replaced by a deterministic paragraph. If no API key is configured the pipeline falls back silently rather than failing the job.
+**LLM summary + guardrail.** The model receives only computed scores, counts and the already-written recommendation text — never a PGN, move, opening or opponent. Its output is then validated two ways: every number in the summary must appear in the facts it was given, and a blocklist of specificity it has no basis for (opening names, tactical motifs, ratings, opponents) is rejected unless the term appeared in the facts. A rejected summary is retried once with the violations fed back, then replaced by a deterministic paragraph. If no API key is configured the pipeline falls back silently rather than failing the job.
+
+Two deliberate allowances in the number check, both found by running real summaries through it:
+
+- A 0-1 score restated as a percentage passes, since that's a restatement rather than a new claim.
+- Numbers are also matched **spelled out** ("in seven spots" was a real model output that digit matching alone waved through), but only from *four* upward. "One", "two" and "three" read as ordinary prose far more often than as claims — "do those two things", "one of those" — and validating them would reject good summaries.
 
 **Not yet verified end to end:** the engine stage has only run against a stub UCI engine (a Stockfish binary wasn't installable in the build environment), and the live LLM call has only run against a stubbed client — no API key was configured. Both paths are covered by tests; both want one real run before deploying.
 

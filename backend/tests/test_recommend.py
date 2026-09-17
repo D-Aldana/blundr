@@ -17,17 +17,25 @@ def test_insufficient_and_zero_score_categories_never_rank():
     assert [c.name for c in rank_categories(categories)] == ["conversion"]
 
 
-def test_ranking_is_severity_times_frequency():
+def test_ranking_is_by_score_since_the_score_is_already_a_rate():
     categories = [
-        make_category("tactical", score=0.9, instances=3),      # 2.7
-        make_category("endgame", score=0.4, instances=10),      # 4.0
-        make_category("conversion", score=0.5, instances=4),    # 2.0
+        make_category("tactical", score=0.9, instances=3),
+        make_category("endgame", score=0.4, instances=10),
+        make_category("conversion", score=0.5, instances=4),
     ]
     assert [c.name for c in rank_categories(categories)] == [
-        "endgame",
         "tactical",
         "conversion",
+        "endgame",
     ]
+
+
+def test_ranking_ties_break_toward_the_better_evidenced_category():
+    categories = [
+        make_category("endgame", score=0.6, instances=4),
+        make_category("tactical", score=0.6, instances=11),
+    ]
+    assert [c.name for c in rank_categories(categories)] == ["tactical", "endgame"]
 
 
 def test_headline_follows_the_worst_category():

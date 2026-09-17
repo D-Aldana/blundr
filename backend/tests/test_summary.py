@@ -127,3 +127,23 @@ async def test_llm_failure_falls_back_without_breaking_the_report(monkeypatch):
     assert result.source == "fallback"
     assert result.violations == ["llm_error: no api key"]
     assert result.text
+
+
+def test_spelled_out_number_from_the_facts_is_allowed():
+    assert validate_summary("In seven positions you missed the shot.", FACTS) == []
+
+
+def test_spelled_out_number_that_was_never_provided_is_caught():
+    violations = validate_summary("You blundered in twelve games.", FACTS)
+    assert violations == ["unsupported number: twelve"]
+
+
+def test_small_number_words_are_treated_as_prose_not_claims():
+    text = "Do those two things and one habit will carry over."
+    assert validate_summary(text, FACTS) == []
+
+
+def test_spelled_number_check_is_case_insensitive():
+    assert validate_summary("Twelve games went that way.", FACTS) == [
+        "unsupported number: Twelve"
+    ]

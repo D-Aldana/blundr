@@ -80,12 +80,17 @@ def _evidence(category: CategoryResult) -> str:
 
 
 def rank_categories(categories: list[CategoryResult]) -> list[CategoryResult]:
-    """Worst first, by frequency x severity. Categories without enough data to
-    report (PRD section 15 sample-size guard) never rank."""
+    """Worst first. The score is already a rate — how often the category fires
+    against how often it could — so frequency is in it; multiplying by the
+    instance count again would just favour whichever category had the most
+    opportunities. Ties break toward the better-evidenced category.
+
+    Categories without enough data to report (PRD section 15 sample-size
+    guard) never rank."""
     reportable = [
         c for c in categories if c.confidence != "insufficient" and c.score > 0
     ]
-    return sorted(reportable, key=lambda c: -(c.score * c.instances))
+    return sorted(reportable, key=lambda c: (-c.score, -c.instances))
 
 
 def headline(categories: list[CategoryResult]) -> str:
