@@ -1,0 +1,75 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-ink: #10214a;
+  --color-ink-soft: #46536f;
+  --color-paper: #eef0ea;
+  --color-chalk: #fbfcfa;
+  --color-rule: #d3d8ce;
+  --color-blunder: #c8362b;
+
+  --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Newsreader', ui-serif, Georgia, serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-color: var(--color-paper);
+    /* Graph-paper ground — the board is a coordinate grid, so is the page. */
+    background-image:
+      linear-gradient(var(--color-rule) 1px, transparent 1px),
+      linear-gradient(90deg, var(--color-rule) 1px, transparent 1px);
+    background-size: 28px 28px;
+    color: var(--color-ink);
+    font-family: var(--font-body);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 3px;
+  }
+}
+
+@utility label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+}
+
+/* Eval bars sweep to their value once on mount, staggered down the list. */
+@keyframes sweep {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+.sweep {
+  transform-origin: left;
+  animation: sweep 900ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.rise {
+  animation: rise 500ms ease-out backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sweep,
+  .rise {
+    animation: none;
+  }
+}

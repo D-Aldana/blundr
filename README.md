@@ -24,13 +24,19 @@ taxonomy, pipeline, tech stack, API contract, and classifier thresholds.
 │   │   ├── summary.py    LLM summary + output-validation guardrail
 │   │   └── report.py     final report payload
 │   └── tests/
-├── frontend/         (not yet scaffolded — React + Tailwind + Recharts per PRD)
+├── frontend/         Vite + React + TS + Tailwind
+│   └── src/
+│       ├── api.ts        typed client for the three endpoints
+│       ├── copy.ts       step/error keys -> display text
+│       └── components/   Scoresheet (form), Analyzing, Report
 └── docs/
     └── prd.md
 ```
 
 ## Status
 
+Frontend covers the full v1 flow: landing form, eligibility gate with
+one-click alternative time controls, polled progress, and the report view.
 Backend pipeline is complete and tested end to end: eligibility check,
 Chess.com fetch (verified against the live API), Stockfish evaluation,
 the four classifiers, recommendation mapping, and the LLM summary with its
@@ -99,6 +105,19 @@ python scripts/calibrate.py report    # rate distributions + proposed constants
 The anonymized sample behind the current constants is in `calibration/`.
 See `docs/prd.md` §15 for what the numbers mean and which categories
 discriminate well.
+
+## Frontend: local dev setup
+
+```bash
+cd frontend
+npm install
+npm run dev          # http://localhost:5173
+```
+
+Talks to `http://localhost:8000` by default — the backend's `ALLOWED_ORIGINS`
+already permits the Vite dev origin. Point it elsewhere with `VITE_API_BASE`.
+
+Run the backend alongside it; the landing form is the only entry point.
 
 ## API
 
