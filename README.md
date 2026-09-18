@@ -29,6 +29,7 @@ taxonomy, pipeline, tech stack, API contract, and classifier thresholds.
 │       ├── api.ts        typed client for the three endpoints
 │       ├── copy.ts       step/error keys -> display text
 │       └── components/   Scoresheet (form), Analyzing, Report
+├── branding/         Blundr knight mark: master art + generated icon/PWA set
 ├── docs/
 │   └── prd.md
 ├── docker-compose.yml   both services, no local toolchain needed
@@ -55,8 +56,8 @@ Stockfish, Python and Node all live in the images, so Docker is the only
 prerequisite.
 
 ```bash
-git clone https://github.com/D-Aldana/chess-weakness-analyzer.git
-cd chess-weakness-analyzer
+git clone https://github.com/D-Aldana/blundr.git
+cd blundr
 docker compose up
 ```
 
@@ -139,3 +140,14 @@ curl -X POST localhost:8000/analyze -H 'content-type: application/json' \
 
 curl localhost:8000/analyze/<job_id>
 ```
+
+## Branding
+
+The stumbling-knight mark, its palette, and the full favicon/PWA/OG asset set
+live in [`branding/blundr-knight/`](branding/blundr-knight/README.md). The
+generated files are already wired into `frontend/public/`, so the only reason
+to touch that folder is to regenerate assets from the master art.
+
+| Ink navy | Paper cream | Chalk white | Blunder red |
+|---|---|---|---|
+| `#10214A` | `#EEF0EA` | `#FBFCFA` | `#C8362B` |

@@ -1,27 +1,34 @@
 # Blundr knight icon pack
 
-Production-ready web assets based on the selected stumbling knight concept.
+The stumbling-knight mark and the web asset set generated from it.
 
-## Folder contents
+## Master art
 
 - `source/blundr-knight-master.png`: full-resolution, transparent, flat-color master.
 - `source/blundr-knight-transparent-1024.png`: normalized 1024 px transparent source.
-- `public/favicon.ico`: multi-resolution favicon containing 16, 32, 48, 64, 128, and 256 px variants.
-- `public/favicon-16x16.png`, `favicon-32x32.png`, `favicon-48x48.png`: explicit browser favicon sizes.
-- `public/apple-touch-icon.png`: 180 px iOS home-screen icon.
-- `public/android-chrome-192x192.png`, `android-chrome-512x512.png`: standard PWA icons.
-- `public/maskable-icon-192x192.png`, `maskable-icon-512x512.png`: extra-padded Android maskable icons.
-- `public/mstile-150x150.png`: Microsoft tile icon.
-- `public/icon-transparent-512x512.png`: transparent mark for product UI and marketing layouts.
-- `public/og-image.png`: 1200 by 630 px social preview image.
-- `site.webmanifest`: ready-to-use web app manifest.
+
+Everything else is derived from these two files — regenerate rather than edit.
+
+## Generated assets
+
+The generated set is installed in [`frontend/public/`](../../frontend/public),
+which Vite copies to the site root:
+
+- `favicon.ico`: multi-resolution favicon (16, 32, 48, 64, 128, 256 px).
+- `favicon-16x16.png`, `favicon-32x32.png`, `favicon-48x48.png`, `favicon-256x256.png`: explicit browser favicon sizes.
+- `apple-touch-icon.png`: 180 px iOS home-screen icon.
+- `android-chrome-192x192.png`, `android-chrome-512x512.png`: standard PWA icons.
+- `maskable-icon-192x192.png`, `maskable-icon-512x512.png`: extra-padded Android maskable icons.
+- `mstile-150x150.png`: Microsoft tile icon.
+- `icon-transparent-512x512.png`: transparent mark for product UI and marketing layouts.
+- `og-image.png`: 1200 by 630 px social preview image.
+- `site.webmanifest`: web app manifest.
 - `browserconfig.xml`: Microsoft tile configuration.
 
-## Install
+## Install elsewhere
 
-Copy everything inside `public/` to your app's public or static root. Copy `site.webmanifest` and `browserconfig.xml` there too.
-
-Add this inside your document `<head>`:
+To reuse the pack in another app, copy those files to its public or static
+root and add this inside the document `<head>`:
 
 ```html
 <link rel="icon" href="/favicon.ico" sizes="any">
@@ -35,7 +42,8 @@ Add this inside your document `<head>`:
 <meta name="twitter:card" content="summary_large_image">
 ```
 
-If your app is hosted below a subpath, update the leading `/` paths in the HTML, manifest, and browser configuration.
+If the app is hosted below a subpath, update the leading `/` paths in the HTML,
+manifest, and browser configuration.
 
 ## Brand colors
 
