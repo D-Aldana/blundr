@@ -97,7 +97,7 @@ The report requires **at least 20 games in the selected time control** to run at
 
 - **Depth vs. speed tradeoff:** lower Stockfish depth (12-14) is needed for a fast v1 experience, but may reduce classification precision — worth validating against a few known games where the "right" diagnosis is already known.
 - **Drop-off at the eligibility gate:** requiring exactly 20 games in one time control will turn away casual players who don't meet it in any single mode. Mitigate by making that moment itself painless (show counts, one-click switch to a qualifying time control) rather than loosening the threshold.
-- **Chess.com API rate limits / availability** — needs confirming before build.
+- **Chess.com API rate limits / availability** — the endpoints, field names and 404 behaviour are confirmed against the live API (Section 16), and archive walking is bounded and cached to keep request volume low. Published rate limits are still unconfirmed; worth watching once there is real traffic.
 - **Tone calibration:** balancing "fun/shareable" against "credible coaching tool" — leaning fun for the share hook while keeping the underlying classification rigorous.
 
 ## 13. Tech stack (v1)
@@ -108,9 +108,10 @@ The report requires **at least 20 games in the selected time control** to run at
 | Chess engine | Stockfish binary + `python-chess` | `python-chess` handles PGN parsing, board state, and UCI communication with Stockfish |
 | Job handling | In-process async background task, polled by job ID | No Celery/Redis needed for v1 — there's no persistence requirement (see Non-goals), so a single-instance in-memory job store is sufficient at hobby scale. Revisit only if traffic outgrows one server. |
 | Database | None for v1 | No accounts, no history — nothing to persist between requests |
-| Frontend | React + Tailwind + Recharts | Small surface area (landing form, progress state, report view) — a heavier framework isn't needed, React mainly earns its keep on the report page's chart/state handling |
+| Frontend | Vite + React + TypeScript + Tailwind | Small surface area (landing form, progress state, report view) — a heavier framework isn't needed, React mainly earns its keep on the report page's state handling. Recharts was in the original stack for a radar chart; see Section 17 for why the report uses eval bars instead |
 | LLM | Claude API, called server-side only | Receives only computed scores/counts, never raw PGN; output passed through the validation guardrail (Section 10) before being returned |
 | Shareable card | Design the report page to look good as a screenshot for v1 | Real server-side image generation (headless-browser render or programmatic image lib) deferred until there's evidence people want to share it |
+| Local setup | Docker Compose, or a Makefile for native dev | `docker compose up` needs nothing installed but Docker — Stockfish, Python and Node all live in the images, which removes the engine binary as a setup step. `make setup && make dev` is the faster native loop |
 | Hosting | Render, Starter tier (~$7/month) | Avoids the free tier's cold-start penalty (30-60s after 15 min idle), which would badly hurt first-impression UX for a "try this on LinkedIn" tool. Stockfish's CPU-bound workload also needs a real always-on instance, not serverless. |
 
 **Explicitly avoided for v1:**
@@ -293,7 +294,7 @@ The full v1 backend pipeline is implemented behind the three endpoints from Sect
 
 `fetch_game_counts` → `fetch_last_n_games` → `evaluate_games_with_stockfish` → `classify_weaknesses` → `map_recommendations` → `generate_llm_summary` → `build_report`
 
-Each stage lives in its own module under `backend/app/` (`chesscom`, `engine`, `classify`, `recommend`, `summary`, `report`), with thresholds and tunables in `config.py` and 65 tests in `backend/tests/`.
+Each stage lives in its own module under `backend/app/` (`chesscom`, `engine`, `classify`, `recommend`, `summary`, `report`), with thresholds and tunables in `config.py` and 80 tests in `backend/tests/`.
 
 **Chess.com fetch — implemented and verified against the live API.** The v1 constraints are baked in:
 
@@ -319,9 +320,25 @@ Two deliberate allowances in the number check, both found by running real summar
 - A 0-1 score restated as a percentage passes, since that's a restatement rather than a new claim.
 - Numbers are also matched **spelled out** ("in seven spots" was a real model output that digit matching alone waved through), but only from *four* upward. "One", "two" and "three" read as ordinary prose far more often than as claims — "do those two things", "one of those" — and validating them would reject good summaries.
 
-**Not yet verified end to end:** the engine stage has only run against a stub UCI engine (a Stockfish binary wasn't installable in the build environment), and the live LLM call has only run against a stubbed client — no API key was configured. Both paths are covered by tests; both want one real run before deploying.
+**Verified end to end.** The earlier caveat — engine stage tested only against a stub UCI engine, LLM call only against a stubbed client — is resolved. The pipeline has since run against a real Stockfish 17.1 binary and a live Anthropic key, both natively and inside the Docker image: 20 blitz games in roughly 70 seconds, returning `summary_source: "llm"`. The stub-driven tests remain, so the suite still runs without Stockfish installed.
 
-## 17. Future phases (not v1)
+## 17. Frontend implementation status
+
+Built to the Section 8 flow as three views behind a single state machine (`frontend/src/App.tsx`), with a typed client for the Section 14 endpoints in `api.ts` and the step, error and category vocabulary in `copy.ts`.
+
+- **Eligibility gates analysis, as designed.** `/eligibility` runs first and a shortfall never starts a job, so the progress bar only ever appears when a report is actually coming. The alternative time controls come back as buttons that re-submit immediately — the "one click, without leaving the page" requirement in Section 7.
+- **The `step` key earns its keep.** Each machine key from Section 14 maps to its own line ("Separating the blunders from the bad luck"), which is what that field was made a key for rather than display text.
+- **The sample-size guard is visible in the UI.** A category returning `confidence: "insufficient"` renders an empty track reading "too few to judge" rather than a bar, so a score the sample can't support is never drawn. Ranking mirrors `recommend.rank_categories`, so the highlighted bar always agrees with the headline.
+
+**Deviation from Section 13 — no radar chart.** Four axes make a diamond that is hard to read and easy to misjudge, and the four categories are independent rates rather than a shape worth comparing. The report uses horizontal eval bars instead: more legible at n=4, and the native idiom for a chess evaluation. Recharts is still a dependency, unused, if the radar is wanted later.
+
+**Share affordance** is Section 13's v1 answer — the report page is designed to screenshot cleanly — plus a "Copy result" button that puts the headline and summary on the clipboard. No server-side image generation, as deferred there.
+
+`VITE_API_BASE` points the client at the backend (default `http://localhost:8000`); the backend's `ALLOWED_ORIGINS` already permits the Vite dev origin.
+
+**Not yet verified:** nobody has looked at the rendered page in a browser. The build and typecheck are clean and the report shape is confirmed against real API responses field for field, but the visual layout has had no review.
+
+## 18. Future phases (not v1)
 
 - Rolling/persisted baseline + trend view (recent 20 vs. longer-term).
 - Lichess + PGN upload support.
