@@ -27,11 +27,18 @@ export function Scoresheet({ busy, error, shortfall, onSubmit }: Props) {
   return (
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col justify-center px-5 py-16">
       <header className="rise">
-        <h1 className="font-display text-[clamp(2.75rem,10vw,4.5rem)] leading-[0.88] font-extrabold tracking-[-0.03em]">
-          Chess weakness
-          <br />
-          analyzer
-        </h1>
+        <span className="label">Chess.com weakness report</span>
+        <div className="mt-2 flex items-center gap-3">
+          <img
+            src="/icon-transparent-512x512.png"
+            alt=""
+            aria-hidden="true"
+            className="h-[clamp(2.5rem,8.5vw,4rem)] w-auto shrink-0"
+          />
+          <h1 className="font-display text-[clamp(2.75rem,10vw,4.5rem)] leading-[0.88] font-extrabold tracking-[-0.03em]">
+            Blund<span className="text-blunder">r</span>
+          </h1>
+        </div>
         <p className="mt-5 max-w-md text-lg text-ink-soft italic">
           Twenty games, read move by move. One uncomfortable truth about your
           chess, and what to do about it.

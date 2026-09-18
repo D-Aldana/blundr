@@ -4,7 +4,7 @@
 PY := backend/venv/bin/python
 
 help: ## Show this help
-	@echo "Chess Weakness Analyzer"
+	@echo "Blundr"
 	@echo
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1m%-10s\033[0m %s\n", $$1, $$2}'

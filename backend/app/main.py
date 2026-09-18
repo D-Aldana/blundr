@@ -1,5 +1,5 @@
 """
-Chess Weakness Analyzer — backend API (v1)
+Blundr — backend API (v1)
 
 Three endpoints per the PRD API contract:
   POST /eligibility        -> fast game-count check, no engine analysis
@@ -33,7 +33,7 @@ from .summary import generate_llm_summary
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 log = logging.getLogger(__name__)
 
-app = FastAPI(title="Chess Weakness Analyzer")
+app = FastAPI(title="Blundr")
 
 app.add_middleware(
     CORSMiddleware,

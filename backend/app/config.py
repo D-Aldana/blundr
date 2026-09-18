@@ -20,7 +20,7 @@ CHESS_COM_BASE = "https://api.chess.com/pub"
 # Chess.com returns 403 without a descriptive User-Agent. Set a real contact
 # address via CHESS_COM_CONTACT before deploying.
 CHESS_COM_CONTACT = os.getenv("CHESS_COM_CONTACT", "you@example.com")
-CHESS_COM_HEADERS = {"User-Agent": f"chess-weakness-analyzer/0.1 ({CHESS_COM_CONTACT})"}
+CHESS_COM_HEADERS = {"User-Agent": f"blundr/0.1 ({CHESS_COM_CONTACT})"}
 # Bounds on how far back we walk a very active player's monthly archives.
 MAX_ARCHIVE_MONTHS = 12
 ELIGIBILITY_COUNT_CAP = MIN_GAMES_REQUIRED * 3
