@@ -1,4 +1,4 @@
-# Chess Weakness Analyzer
+# Blundr
 
 Free, no-signup tool that takes a Chess.com username, analyzes the last 20
 games in a time control with Stockfish, and produces a shareable report card

@@ -1,9 +1,9 @@
-# PRD: Chess Weakness Analyzer (v1)
+# PRD: Blundr (v1)
 
-**Working name:** TBD (placeholder: "Chess Leaks")
+**Name:** Blundr
 **Owner:** [you]
 **Status:** Draft v1
-**Last updated:** 2026-09-15
+**Last updated:** 2026-09-17
 
 ---
 

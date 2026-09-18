@@ -66,7 +66,7 @@ export function Report({
 
   const copy = async () => {
     await navigator.clipboard.writeText(
-      `${report.headline}\n\n${report.summary}\n\n— Chess Weakness Analyzer, ${report.games_analyzed} ${report.time_control} games as ${report.username}`,
+      `${report.headline}\n\n${report.summary}\n\n— Blundr, ${report.games_analyzed} ${report.time_control} games as ${report.username}`,
     )
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
