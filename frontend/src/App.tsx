@@ -16,7 +16,13 @@ const POLL_MS = 1200
 
 type Phase =
   | { name: 'form' }
-  | { name: 'running'; username: string; step: string; progress: number }
+  | {
+      name: 'running'
+      username: string
+      step: string
+      progress: number
+      queuePosition?: number
+    }
   | { name: 'report'; report: ReportData }
 
 export default function App() {
@@ -69,7 +75,12 @@ export default function App() {
         } else {
           setPhase((p) =>
             p.name === 'running'
-              ? { ...p, step: job.step, progress: job.progress }
+              ? {
+                  ...p,
+                  step: job.step,
+                  progress: job.progress,
+                  queuePosition: job.queue_position,
+                }
               : p,
           )
         }
@@ -93,6 +104,7 @@ export default function App() {
         username={phase.username}
         step={phase.step}
         progress={phase.progress}
+        queuePosition={phase.queuePosition}
       />
     )
   }

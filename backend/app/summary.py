@@ -8,6 +8,7 @@ specificity is retried once and then replaced by a deterministic paragraph.
 
 import logging
 import re
+import time
 from typing import Optional
 
 from . import config
@@ -168,6 +169,21 @@ async def _call_claude(facts: str, correction: Optional[str] = None) -> str:
     return "".join(b.text for b in response.content if b.type == "text").strip()
 
 
+# Timestamps of paid LLM calls in the last 24h. A global ceiling, because the
+# per-IP limits don't stop many callers each making one expensive request.
+_llm_calls: list[float] = []
+
+
+def _claim_llm_budget() -> bool:
+    """Record a call against the rolling daily budget, or report it exhausted."""
+    cutoff = time.monotonic() - 86400
+    _llm_calls[:] = [t for t in _llm_calls if t > cutoff]
+    if len(_llm_calls) >= config.SUMMARY_DAILY_BUDGET:
+        return False
+    _llm_calls.append(time.monotonic())
+    return True
+
+
 async def generate_llm_summary(
     categories: list[CategoryResult],
     recommendations: list[Recommendation],
@@ -179,6 +195,11 @@ async def generate_llm_summary(
     correction = None
 
     for attempt in range(config.SUMMARY_MAX_ATTEMPTS):
+        if not _claim_llm_budget():
+            log.warning("daily LLM budget exhausted; using deterministic summary")
+            all_violations.append("daily_budget_exhausted")
+            break
+
         try:
             text = await _call_claude(facts, correction)
         except Exception as exc:  # noqa: BLE001 — any LLM failure falls back

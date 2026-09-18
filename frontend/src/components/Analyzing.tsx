@@ -8,10 +8,12 @@ export function Analyzing({
   username,
   step,
   progress,
+  queuePosition,
 }: {
   username: string
   step: string
   progress: number
+  queuePosition?: number
 }) {
   const [elapsed, setElapsed] = useState(0)
 
@@ -43,7 +45,11 @@ export function Analyzing({
         />
       </div>
 
-      <p className="label mt-3 tabular-nums">{Math.round(progress * 100)}% complete</p>
+      <p className="label mt-3 tabular-nums">
+        {queuePosition
+          ? `${queuePosition} ahead of you`
+          : `${Math.round(progress * 100)}% complete`}
+      </p>
     </main>
   )
 }
