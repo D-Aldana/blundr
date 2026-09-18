@@ -10,6 +10,7 @@ export const CATEGORY_LABEL: Record<Category['name'], string> = {
 /** `step` is a machine key by design (PRD §14) so the wait can have a voice. */
 export const STEP_COPY: Record<string, string> = {
   fetching_games: 'Pulling your last 20 games',
+  queued: 'Waiting for an engine slot',
   evaluating_games: 'Stockfish is going through every move',
   classifying_weaknesses: 'Separating the blunders from the bad luck',
   generating_recommendations: 'Working out what you should drill',
@@ -18,6 +19,12 @@ export const STEP_COPY: Record<string, string> = {
 
 export function failureCopy(code: string): string {
   switch (code) {
+    case 'rate_limited':
+      return 'That is as many reports as one visitor gets per hour. Come back a bit later.'
+    case 'busy':
+      return 'The engine is at capacity right now. Try again in a minute.'
+    case 'invalid_username':
+      return 'Chess.com usernames are 3 to 25 letters, digits, underscores or hyphens.'
     case 'unreachable':
       return 'Cannot reach the analyzer. Check that the backend is running on port 8000.'
     case 'user_not_found':

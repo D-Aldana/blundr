@@ -136,3 +136,19 @@ async def test_last_n_games_stops_at_n(mock_api):
 async def test_unsupported_time_control_is_rejected():
     with pytest.raises(ValueError):
         await chesscom.fetch_last_n_games("testplayer", "daily", n=5)
+
+
+@pytest.mark.parametrize(
+    "username",
+    ["../../../foo", "a?x=1", "a#frag", "ab", "x" * 26, "has space"],
+)
+def test_malformed_usernames_never_reach_the_url(username):
+    """The username lands in the request path, so "../" or "?" would otherwise
+    let a caller choose which Chess.com endpoint gets hit."""
+    with pytest.raises(ValueError, match="invalid_username"):
+        chesscom.require_valid_username(username)
+
+
+def test_ordinary_usernames_pass_and_are_lowercased():
+    assert chesscom.require_valid_username("Hikaru") == "hikaru"
+    assert chesscom.require_valid_username("a_b-1") == "a_b-1"

@@ -164,11 +164,25 @@ Response:
 { "job_id": "abc123" }
 ```
 
+`/analyze` also refuses work rather than queueing it without bound (Section 16):
+
+```json
+{ "error": "invalid_username" }                      // 400
+{ "error": "rate_limited", "retry_after_s": 1800 }   // 429, with Retry-After
+{ "error": "busy" }                                  // 503, engine at capacity
+```
+
 **`GET /analyze/{job_id}`** (polled by the frontend during processing)
 
 Response while running:
 ```json
 { "status": "running", "step": "evaluating_games", "progress": 0.6 }
+```
+
+A job waiting for an engine slot reports its place in line, so the wait stays
+explicable rather than looking stalled:
+```json
+{ "status": "running", "step": "queued", "progress": 0.1, "queue_position": 2 }
 ```
 
 Response when done:
@@ -294,7 +308,7 @@ The full v1 backend pipeline is implemented behind the three endpoints from Sect
 
 `fetch_game_counts` → `fetch_last_n_games` → `evaluate_games_with_stockfish` → `classify_weaknesses` → `map_recommendations` → `generate_llm_summary` → `build_report`
 
-Each stage lives in its own module under `backend/app/` (`chesscom`, `engine`, `classify`, `recommend`, `summary`, `report`), with thresholds and tunables in `config.py` and 80 tests in `backend/tests/`.
+Each stage lives in its own module under `backend/app/` (`chesscom`, `engine`, `classify`, `recommend`, `summary`, `report`), with thresholds and tunables in `config.py` and 109 tests in `backend/tests/`.
 
 **Chess.com fetch — implemented and verified against the live API.** The v1 constraints are baked in:
 
@@ -321,6 +335,15 @@ Two deliberate allowances in the number check, both found by running real summar
 - Numbers are also matched **spelled out** ("in seven spots" was a real model output that digit matching alone waved through), but only from *four* upward. "One", "two" and "three" read as ordinary prose far more often than as claims — "do those two things", "one of those" — and validating them would reject good summaries.
 
 **Verified end to end.** The earlier caveat — engine stage tested only against a stub UCI engine, LLM call only against a stubbed client — is resolved. The pipeline has since run against a real Stockfish 17.1 binary and a live Anthropic key, both natively and inside the Docker image: 20 blitz games in roughly 70 seconds, returning `summary_source: "llm"`. The stub-driven tests remain, so the suite still runs without Stockfish installed.
+
+**Abuse limits.** The service has no accounts to throttle, spends real CPU and real API credit per request, and fetches from Chess.com on a shared IP — so every limit is keyed on the caller's IP or on a global ceiling, and all of it is in-process state (correct for the single instance of Section 13; it silently becomes per-instance if scaled out).
+
+- **Engine concurrency is capped** at `MAX_CONCURRENT_ANALYSES` (default 1) by a semaphore held across the engine stage only. Without it every request spawned its own Stockfish, so a single caller in a loop could exhaust the CPU of the Starter instance for free. Past the cap jobs queue and report `queue_position`; past `MAX_QUEUED_ANALYSES` the endpoint returns 503 rather than accepting work that would starve.
+- **Per-IP sliding windows** on both endpoints, in separate buckets so spending the analysis quota doesn't lock someone out of the cheap eligibility check. `X-Forwarded-For` is honoured only when `TRUST_PROXY_HEADER` says a proxy that overwrites it is actually in front — trusting it otherwise would let a caller forge an IP per request and defeat every limit here.
+- **Usernames are validated** against `^[A-Za-z0-9_-]{3,25}$` at both the API boundary and the fetch layer. The username is interpolated into the Chess.com request path, where `../` escaped `/pub/player/` and `?` or `#` truncated the path — so an unvalidated caller chose which endpoint we hit. Contained to `api.chess.com` (the base URL is fixed and redirects are not followed), but closed regardless; it also keeps junk out of the counts cache, which is now evicted by TTL rather than growing per distinct username.
+- **A rolling daily ceiling on paid LLM calls** (`SUMMARY_DAILY_BUDGET`), counted per call including guardrail retries. Past it the summary degrades to the deterministic paragraph that already exists for the no-API-key case, so the job still returns a report.
+
+Not covered here, and worth doing before any real traffic: distributed abuse needs something in front of the app (Cloudflare's free tier over Render would handle IP and bot rules better than anything in-process), and Chess.com's own rate limits still want backoff handling — being banned there stops the product entirely.
 
 ## 17. Frontend implementation status
 

@@ -1,6 +1,7 @@
 """Tunable constants for the v1 pipeline (PRD sections 7, 13, 15)."""
 
 import os
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -77,3 +78,36 @@ LOW_CONFIDENCE_MAX = 5
 SUMMARY_MODEL = os.getenv("SUMMARY_MODEL", "claude-opus-5")
 SUMMARY_MAX_TOKENS = 2000
 SUMMARY_MAX_ATTEMPTS = 2
+
+# --- Abuse limits ------------------------------------------------------------
+# No signup means no account to throttle, so every limit below is keyed on
+# either the request IP or a global ceiling. All of it is in-process state:
+# correct for the single instance PRD section 13 specifies, and it silently
+# becomes per-instance if this is ever scaled out.
+
+# Chess.com usernames are 3-25 characters of letters, digits, underscore and
+# hyphen. Enforcing that also keeps caller-controlled text out of the request
+# path, where "../" or "?" would otherwise choose the endpoint we hit.
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]{3,25}$")
+
+# The engine stage is CPU-bound and runs for tens of seconds, so it gets a hard
+# concurrency cap instead of one Stockfish process per request. Past the cap
+# jobs queue; past the queue they are refused rather than silently starved.
+MAX_CONCURRENT_ANALYSES = int(os.getenv("MAX_CONCURRENT_ANALYSES", "1"))
+MAX_QUEUED_ANALYSES = int(os.getenv("MAX_QUEUED_ANALYSES", "8"))
+
+# Per-IP sliding windows: (requests, window_seconds). Analysis is expensive and
+# rationed; the eligibility check is cheap for us but not free, since it walks
+# Chess.com archives on our IP.
+RATE_LIMIT_ANALYZE = (int(os.getenv("RATE_LIMIT_ANALYZE", "5")), 3600.0)
+RATE_LIMIT_ELIGIBILITY = (int(os.getenv("RATE_LIMIT_ELIGIBILITY", "20")), 3600.0)
+
+# Only trust X-Forwarded-For when a proxy that overwrites it is actually in
+# front (Render, Cloudflare). Trusting it otherwise lets a caller forge an IP
+# per request and defeat every limit above.
+TRUST_PROXY_HEADER = os.getenv("TRUST_PROXY_HEADER", "").lower() in ("1", "true", "yes")
+
+# Ceiling on paid LLM calls per rolling 24h. Past it the summary degrades to
+# the deterministic paragraph rather than the job failing — the fallback path
+# already exists for the no-API-key case.
+SUMMARY_DAILY_BUDGET = int(os.getenv("SUMMARY_DAILY_BUDGET", "200"))

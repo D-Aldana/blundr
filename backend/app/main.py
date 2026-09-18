@@ -15,9 +15,10 @@ import logging
 import os
 import time
 import uuid
+from contextlib import asynccontextmanager
 from enum import Enum
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -56,6 +57,70 @@ _job_started: dict[str, float] = {}
 _running: set[asyncio.Task] = set()
 
 
+# Only MAX_CONCURRENT_ANALYSES engine stages run at once; the rest wait here in
+# arrival order so a caller can be told where they are in line.
+_engine_slots = asyncio.Semaphore(config.MAX_CONCURRENT_ANALYSES)
+_queue: list[str] = []
+
+# Per-IP sliding windows, keyed (bucket, ip) -> hit timestamps.
+_rate_hits: dict[tuple[str, str], list[float]] = {}
+
+
+def _client_ip(request: Request) -> str:
+    # X-Forwarded-For is forgeable unless a proxy in front overwrites it, so
+    # it is consulted only when the deployment says one is there.
+    if config.TRUST_PROXY_HEADER:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _prune_rate_hits(now: float) -> None:
+    if len(_rate_hits) < 1024:
+        return
+    longest = max(config.RATE_LIMIT_ANALYZE[1], config.RATE_LIMIT_ELIGIBILITY[1])
+    for key in [k for k, ts in _rate_hits.items() if not ts or now - ts[-1] >= longest]:
+        del _rate_hits[key]
+
+
+def _rate_limit(request: Request, bucket: str, rule: tuple[int, float]) -> None:
+    limit, window = rule
+    now = time.monotonic()
+    key = (bucket, _client_ip(request))
+    hits = [t for t in _rate_hits.get(key, []) if now - t < window]
+
+    if len(hits) >= limit:
+        _rate_hits[key] = hits
+        retry_after = int(window - (now - hits[0])) + 1
+        raise HTTPException(
+            status_code=429,
+            detail={"error": "rate_limited", "retry_after_s": retry_after},
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    hits.append(now)
+    _rate_hits[key] = hits
+    _prune_rate_hits(now)
+
+
+@asynccontextmanager
+async def _engine_slot(job_id: str):
+    """Hold one of the engine's concurrency slots for the duration of the
+    engine stage, queueing until one frees up."""
+    _queue.append(job_id)
+    _update(job_id, step="queued", progress=0.1)
+    try:
+        await _engine_slots.acquire()
+    finally:
+        if job_id in _queue:
+            _queue.remove(job_id)
+    try:
+        yield
+    finally:
+        _engine_slots.release()
+
+
 def _prune_jobs():
     cutoff = time.monotonic() - JOB_TTL_S
     for job_id in [j for j, started in _job_started.items() if started < cutoff]:
@@ -73,6 +138,11 @@ class AnalyzeRequest(BaseModel):
     time_control: str
 
 
+def _validate_username(username: str):
+    if not config.USERNAME_PATTERN.match(username):
+        raise HTTPException(status_code=400, detail={"error": "invalid_username"})
+
+
 def _validate_time_control(time_control: str):
     if time_control not in config.VALID_TIME_CLASSES:
         raise HTTPException(
@@ -86,7 +156,9 @@ async def healthz():
 
 
 @app.post("/eligibility")
-async def check_eligibility(req: EligibilityRequest):
+async def check_eligibility(req: EligibilityRequest, request: Request):
+    _rate_limit(request, "eligibility", config.RATE_LIMIT_ELIGIBILITY)
+    _validate_username(req.username)
     _validate_time_control(req.time_control)
     counts = await fetch_game_counts(req.username)
 
@@ -110,8 +182,20 @@ async def check_eligibility(req: EligibilityRequest):
 
 
 @app.post("/analyze")
-async def start_analysis(req: AnalyzeRequest):
+async def start_analysis(req: AnalyzeRequest, request: Request):
+    _rate_limit(request, "analyze", config.RATE_LIMIT_ANALYZE)
+    _validate_username(req.username)
     _validate_time_control(req.time_control)
+
+    # Admission control: refuse outright rather than accepting work that would
+    # sit behind an unbounded queue.
+    if len(_running) >= config.MAX_CONCURRENT_ANALYSES + config.MAX_QUEUED_ANALYSES:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "busy"},
+            headers={"Retry-After": "60"},
+        )
+
     counts = await fetch_game_counts(req.username)
     if counts is None:
         raise HTTPException(status_code=404, detail={"error": "user_not_found"})
@@ -138,6 +222,8 @@ async def get_job(job_id: str):
     job = JOBS.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail={"error": "job_not_found"})
+    if job.get("step") == "queued" and job_id in _queue:
+        return {**job, "queue_position": _queue.index(job_id) + 1}
     return job
 
 
@@ -159,8 +245,6 @@ async def run_analysis_job(job_id: str, username: str, time_control: str):
         if len(games) < config.MIN_GAMES_REQUIRED:
             raise RuntimeError("not_enough_games")
 
-        _update(job_id, step="evaluating_games", progress=EVAL_PROGRESS_START)
-
         def on_game_done(done: int, total: int):
             span = EVAL_PROGRESS_END - EVAL_PROGRESS_START
             _update(
@@ -169,9 +253,11 @@ async def run_analysis_job(job_id: str, username: str, time_control: str):
                 progress=EVAL_PROGRESS_START + span * (done / total),
             )
 
-        move_rows = await evaluate_games_with_stockfish(
-            games, username, progress_cb=on_game_done
-        )
+        async with _engine_slot(job_id):
+            _update(job_id, step="evaluating_games", progress=EVAL_PROGRESS_START)
+            move_rows = await evaluate_games_with_stockfish(
+                games, username, progress_cb=on_game_done
+            )
 
         _update(job_id, step="classifying_weaknesses", progress=0.8)
         categories = classify_weaknesses(move_rows)
@@ -197,6 +283,8 @@ async def run_analysis_job(job_id: str, username: str, time_control: str):
 
 
 def _error_code(exc: Exception) -> str:
+    if isinstance(exc, ValueError) and str(exc) == "invalid_username":
+        return "invalid_username"
     if isinstance(exc, FileNotFoundError):
         return "engine_unavailable"
     if isinstance(exc, asyncio.TimeoutError):

@@ -147,3 +147,41 @@ def test_spelled_number_check_is_case_insensitive():
     assert validate_summary("Twelve games went that way.", FACTS) == [
         "unsupported number: Twelve"
     ]
+
+
+@pytest.fixture(autouse=True)
+def reset_llm_budget():
+    summary_module._llm_calls.clear()
+    yield
+    summary_module._llm_calls.clear()
+
+
+async def test_summary_falls_back_once_the_daily_budget_is_spent(monkeypatch):
+    calls = []
+
+    async def fake_call(facts, correction=None):
+        calls.append(1)
+        return "You missed 7 tactical shots across 20 games. Slow down on forcing moves."
+
+    monkeypatch.setattr(summary_module, "_call_claude", fake_call)
+    monkeypatch.setattr(summary_module.config, "SUMMARY_DAILY_BUDGET", 1)
+
+    first = await generate_llm_summary(CATEGORIES, RECS, 20, "blitz")
+    second = await generate_llm_summary(CATEGORIES, RECS, 20, "blitz")
+
+    assert first.source == "llm"
+    # The job still returns a report — it degrades rather than failing.
+    assert second.source == "fallback"
+    assert "daily_budget_exhausted" in second.violations
+    assert len(calls) == 1
+
+
+async def test_retries_are_charged_against_the_budget(monkeypatch):
+    async def hallucinate(facts, correction=None):
+        return "You lost 14 games in the Caro-Kann."
+
+    monkeypatch.setattr(summary_module, "_call_claude", hallucinate)
+    monkeypatch.setattr(summary_module.config, "SUMMARY_DAILY_BUDGET", 10)
+
+    await generate_llm_summary(CATEGORIES, RECS, 20, "blitz")
+    assert len(summary_module._llm_calls) == 2

@@ -30,7 +30,7 @@ export type Report = {
 }
 
 export type Job =
-  | { status: 'running'; step: string; progress: number }
+  | { status: 'running'; step: string; progress: number; queue_position?: number }
   | { status: 'done'; report: Report }
   | { status: 'failed'; error: string }
 

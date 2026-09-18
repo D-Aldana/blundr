@@ -103,6 +103,12 @@ All values are optional — every one has a working default.
 | `ANTHROPIC_API_KEY` | unset | Without it the summary falls back to a deterministic paragraph |
 | `SUMMARY_MODEL` | `claude-opus-5` | |
 | `ALLOWED_ORIGINS` | `http://localhost:5173` | Comma-separated CORS origins |
+| `MAX_CONCURRENT_ANALYSES` | `1` | Engine stages running at once — the cap that protects the CPU |
+| `MAX_QUEUED_ANALYSES` | `8` | Jobs allowed to wait for a slot; past this `/analyze` returns 503 |
+| `RATE_LIMIT_ANALYZE` | `5` | Analyses per IP per hour. Raise it locally if 5 gets in your way |
+| `RATE_LIMIT_ELIGIBILITY` | `20` | Eligibility checks per IP per hour |
+| `SUMMARY_DAILY_BUDGET` | `200` | Paid LLM calls per rolling day; past it the summary falls back |
+| `TRUST_PROXY_HEADER` | `false` | **Set to `true` only behind a proxy that overwrites `X-Forwarded-For`** — otherwise callers can forge an IP and bypass every rate limit |
 
 ## Recalibrating the weakness scores
 

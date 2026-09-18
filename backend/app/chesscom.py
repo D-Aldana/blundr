@@ -17,11 +17,29 @@ from . import config
 _counts_cache: dict[str, tuple[float, Optional[dict]]] = {}
 
 
+def _cache_counts(key: str, result: Optional[dict]) -> None:
+    """Evict expired entries before inserting, so cycling usernames can't grow
+    the cache without bound."""
+    now = time.monotonic()
+    for k in [k for k, (t, _) in _counts_cache.items() if now - t >= config.GAME_COUNT_CACHE_TTL]:
+        del _counts_cache[k]
+    _counts_cache[key] = (now, result)
+
+
+def require_valid_username(username: str) -> str:
+    """Guard the fetch entry points, not just the API boundary — the username
+    is interpolated into the request path, where "../" or "?" would otherwise
+    let a caller pick which Chess.com endpoint we hit."""
+    if not config.USERNAME_PATTERN.match(username):
+        raise ValueError("invalid_username")
+    return username.lower()
+
+
 async def _fetch_archive_urls(client: httpx.AsyncClient, username: str) -> Optional[list[str]]:
     """Monthly archive URLs, oldest first. A 404 here is how an unknown
     username is distinguished from a real user with zero games."""
     resp = await client.get(
-        f"{config.CHESS_COM_BASE}/player/{username.lower()}/games/archives",
+        f"{config.CHESS_COM_BASE}/player/{require_valid_username(username)}/games/archives",
         headers=config.CHESS_COM_HEADERS,
     )
     if resp.status_code == 404:
@@ -59,7 +77,9 @@ async def fetch_game_counts(username: str) -> Optional[dict]:
     this answers "do they clear the 20-game bar", not "how many have they
     played in their life".
     """
-    cached = _counts_cache.get(username.lower())
+    key = require_valid_username(username)
+
+    cached = _counts_cache.get(key)
     if cached and time.monotonic() - cached[0] < config.GAME_COUNT_CACHE_TTL:
         return cached[1]
 
@@ -79,7 +99,7 @@ async def fetch_game_counts(username: str) -> Optional[dict]:
                 if all(c >= cap for c in counts.values()):
                     break
 
-    _counts_cache[username.lower()] = (time.monotonic(), result)
+    _cache_counts(key, result)
     return result
 
 
@@ -91,6 +111,7 @@ async def fetch_last_n_games(username: str, time_control: str, n: int) -> list[d
     """
     if time_control not in config.VALID_TIME_CLASSES:
         raise ValueError(f"unsupported time_control: {time_control}")
+    require_valid_username(username)
 
     matched: list[dict] = []
     async with httpx.AsyncClient(timeout=10.0) as client:
