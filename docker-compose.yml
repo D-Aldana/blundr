@@ -1,0 +1,28 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    # Optional — the app runs without it, falling back to a deterministic summary.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # VITE_API_BASE points the browser at localhost, so that's the CORS origin.
+      ALLOWED_ORIGINS: http://localhost:5173
+    volumes:
+      - ./backend/app:/app/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      # Resolved by the browser, not the container, so it's the published port.
+      VITE_API_BASE: http://localhost:8000
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+    depends_on:
+      - backend
