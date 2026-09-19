@@ -40,8 +40,7 @@ export function Scoresheet({ busy, error, shortfall, onSubmit }: Props) {
           </h1>
         </div>
         <p className="mt-5 max-w-md text-lg text-ink-soft italic">
-          Twenty games, read move by move. One uncomfortable truth about your
-          chess, and what to do about it.
+          Find out what's actually losing you games.
         </p>
       </header>
 

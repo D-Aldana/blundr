@@ -1,7 +1,7 @@
 {
   "name": "Blundr",
   "short_name": "Blundr",
-  "description": "A blunt, evidence-backed weakness report for your recent chess games.",
+  "description": "Find out what's actually losing you games. Free, no-signup chess.com weakness report.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#EEF0EA",
