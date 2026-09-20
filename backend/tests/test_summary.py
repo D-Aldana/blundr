@@ -1,6 +1,9 @@
+import sys
+from types import SimpleNamespace
+
 import pytest
 
-from app import summary as summary_module
+from app import config, summary as summary_module
 from app.models import Recommendation
 from app.summary import (
     build_facts,
@@ -174,6 +177,55 @@ async def test_summary_falls_back_once_the_daily_budget_is_spent(monkeypatch):
     assert second.source == "fallback"
     assert "daily_budget_exhausted" in second.violations
     assert len(calls) == 1
+
+
+@pytest.fixture
+def captured_request(monkeypatch):
+    """Stub the SDK and hand back the kwargs `_call_claude` sent."""
+    captured: dict = {}
+
+    class FakeMessages:
+        async def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="  Grounded prose.  ")]
+            )
+
+    fake_client = SimpleNamespace(messages=FakeMessages())
+    monkeypatch.setitem(
+        sys.modules, "anthropic", SimpleNamespace(AsyncAnthropic=lambda: fake_client)
+    )
+    return captured
+
+
+async def test_request_uses_the_configured_model_and_system_prompt(captured_request):
+    text = await summary_module._call_claude(FACTS)
+
+    assert text == "Grounded prose."
+    assert captured_request["model"] == config.SUMMARY_MODEL
+    assert captured_request["system"] == summary_module.SYSTEM_PROMPT
+    assert captured_request["messages"] == [
+        {"role": "user", "content": f"Facts:\n\n{FACTS}"}
+    ]
+
+
+async def test_request_sends_no_effort_setting(captured_request):
+    """Haiku 4.5 rejects output_config.effort — it must stay off the request."""
+    await summary_module._call_claude(FACTS)
+
+    assert "output_config" not in captured_request
+
+
+def test_default_model_is_haiku():
+    assert "haiku" in config.SUMMARY_MODEL
+
+
+async def test_correction_is_appended_to_the_facts(captured_request):
+    await summary_module._call_claude(FACTS, correction="unsupported number: 14")
+
+    content = captured_request["messages"][0]["content"]
+    assert content.startswith(f"Facts:\n\n{FACTS}")
+    assert "unsupported number: 14" in content
 
 
 async def test_retries_are_charged_against_the_budget(monkeypatch):

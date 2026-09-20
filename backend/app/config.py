@@ -75,7 +75,7 @@ MIN_INSTANCES = 3
 LOW_CONFIDENCE_MAX = 5
 
 # --- LLM summary -------------------------------------------------------------
-SUMMARY_MODEL = os.getenv("SUMMARY_MODEL", "claude-opus-5")
+SUMMARY_MODEL = os.getenv("SUMMARY_MODEL", "claude-haiku-4-5")
 SUMMARY_MAX_TOKENS = 2000
 SUMMARY_MAX_ATTEMPTS = 2
 

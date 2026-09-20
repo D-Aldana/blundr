@@ -102,7 +102,7 @@ All values are optional — every one has a working default.
 | `ENGINE_TIMEOUT_S` | `300` | Whole-stage cap; a wedged engine fails the job |
 | `CHESS_COM_CONTACT` | `you@example.com` | **Set before deploying** — Chess.com requires a real contact in the User-Agent |
 | `ANTHROPIC_API_KEY` | unset | Without it the summary falls back to a deterministic paragraph |
-| `SUMMARY_MODEL` | `claude-opus-5` | |
+| `SUMMARY_MODEL` | `claude-haiku-4-5` | Larger models also work, but note that `output_config.effort` is not sent |
 | `ALLOWED_ORIGINS` | `http://localhost:5173` | Comma-separated CORS origins |
 | `MAX_CONCURRENT_ANALYSES` | `1` | Engine stages running at once — the cap that protects the CPU |
 | `MAX_QUEUED_ANALYSES` | `8` | Jobs allowed to wait for a slot; past this `/analyze` returns 503 |
