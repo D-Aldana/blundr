@@ -11,7 +11,7 @@ import re
 import time
 from typing import Optional
 
-from . import config
+from . import config, providers
 from .models import CategoryResult, Recommendation, SummaryResult
 from .recommend import rank_categories
 
@@ -179,9 +179,8 @@ def fallback_summary(
     return " ".join(parts)
 
 
-async def _call_claude(facts: str, correction: Optional[str] = None) -> str:
-    import anthropic
-
+async def _call_llm(facts: str, correction: Optional[str] = None) -> str:
+    """Ask the configured provider for the paragraph. Raises if none is set."""
     user_content = f"Facts:\n\n{facts}"
     if correction:
         user_content += (
@@ -189,14 +188,13 @@ async def _call_claude(facts: str, correction: Optional[str] = None) -> str:
             f"{correction}. Rewrite it using only the facts above."
         )
 
-    client = anthropic.AsyncAnthropic()
-    response = await client.messages.create(
-        model=config.SUMMARY_MODEL,
-        max_tokens=config.SUMMARY_MAX_TOKENS,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_content}],
+    resolved = providers.resolve()
+    if resolved is None:
+        raise providers.ProviderError("no LLM provider configured")
+    name, provider = resolved
+    return await provider.complete(
+        SYSTEM_PROMPT, user_content, providers.model_for(name)
     )
-    return "".join(b.text for b in response.content if b.type == "text").strip()
 
 
 # Timestamps of paid LLM calls in the last 24h. A global ceiling, because the
@@ -231,7 +229,7 @@ async def generate_llm_summary(
             break
 
         try:
-            text = await _call_claude(facts, correction)
+            text = await _call_llm(facts, correction)
         except Exception as exc:  # noqa: BLE001 — any LLM failure falls back
             log.warning("LLM summary unavailable: %s", exc)
             all_violations.append(f"llm_error: {exc}")

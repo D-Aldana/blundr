@@ -22,6 +22,7 @@ taxonomy, pipeline, tech stack, API contract, and classifier thresholds.
 │   │   ├── classify.py   deterministic weakness classifiers
 │   │   ├── recommend.py  worst categories -> evidence-backed advice
 │   │   ├── summary.py    LLM summary + output-validation guardrail
+│   │   ├── providers/    anthropic / openai / ollama, behind one interface
 │   │   └── report.py     final report payload
 │   └── tests/
 ├── frontend/         Vite + React + TS + Tailwind
@@ -63,9 +64,10 @@ docker compose up
 
 Open http://localhost:5173. Both services hot-reload from your working tree.
 
-An Anthropic key is optional — without one the summary falls back to a
-deterministic paragraph. To add it: `cp .env.example .env` and fill it in
-before starting.
+An API key is optional — without one the summary falls back to a
+deterministic paragraph. To add one: `cp .env.example .env` and fill it in
+before starting. Anthropic, OpenAI, anything OpenAI-compatible, or a local
+Ollama all work; see [Which model writes the summary](#which-model-writes-the-summary).
 
 ### Natively — faster to develop against
 
@@ -100,16 +102,63 @@ All values are optional — every one has a working default.
 | `ENGINE_DEPTH` | `12` | Lower is faster, less precise (PRD §12) |
 | `ENGINE_THREADS` / `ENGINE_HASH_MB` | `2` / `128` | Engine resources |
 | `ENGINE_TIMEOUT_S` | `300` | Whole-stage cap; a wedged engine fails the job |
-| `CHESS_COM_CONTACT` | `you@example.com` | **Set before deploying** — Chess.com requires a real contact in the User-Agent |
-| `ANTHROPIC_API_KEY` | unset | Without it the summary falls back to a deterministic paragraph |
-| `SUMMARY_MODEL` | `claude-haiku-4-5` | Larger models also work, but note that `output_config.effort` is not sent |
+| `CHESS_COM_CONTACT` | `you@example.com` | Please set your own address — Chess.com asks for a real contact in the User-Agent |
+| `LLM_PROVIDER` | auto | `anthropic`, `openai` or `ollama`. Unset picks whichever key is present — see below |
+| `SUMMARY_MODEL` | per provider | Overrides the provider's default model |
 | `ALLOWED_ORIGINS` | `http://localhost:5173` | Comma-separated CORS origins |
 | `MAX_CONCURRENT_ANALYSES` | `1` | Engine stages running at once — the cap that protects the CPU |
 | `MAX_QUEUED_ANALYSES` | `8` | Jobs allowed to wait for a slot; past this `/analyze` returns 503 |
-| `RATE_LIMIT_ANALYZE` | `5` | Analyses per IP per hour. Raise it locally if 5 gets in your way |
-| `RATE_LIMIT_ELIGIBILITY` | `20` | Eligibility checks per IP per hour |
+| `RATE_LIMIT_ANALYZE` | `50` | Analyses per IP per hour — a runaway-loop backstop for local use |
+| `RATE_LIMIT_ELIGIBILITY` | `200` | Eligibility checks per IP per hour |
 | `SUMMARY_DAILY_BUDGET` | `200` | Paid LLM calls per rolling day; past it the summary falls back |
 | `TRUST_PROXY_HEADER` | `false` | **Set to `true` only behind a proxy that overwrites `X-Forwarded-For`** — otherwise callers can forge an IP and bypass every rate limit |
+
+The limits above assume the way this actually runs: one person, one machine.
+Anything exposed to the open internet wants much lower rate limits and a
+serious look at `MAX_CONCURRENT_ANALYSES`, since an analysis pins a core for
+over a minute.
+
+### Which model writes the summary
+
+The closing paragraph is the only part of the report an LLM touches, and it
+never sees a move — only your computed scores, which a validator then checks
+the prose back against. So any half-decent model does the job, including one
+running on your own machine.
+
+Set a key and Blundr works out the rest:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-...    # claude-haiku-4-5
+OPENAI_API_KEY=sk-...           # gpt-4o-mini
+```
+
+With both set, Anthropic wins; `LLM_PROVIDER` overrides that. `SUMMARY_MODEL`
+overrides the model:
+
+```bash
+LLM_PROVIDER=openai SUMMARY_MODEL=gpt-4o
+```
+
+**Local, free, no key** — Ollama is never auto-detected, so name it:
+
+```bash
+LLM_PROVIDER=ollama SUMMARY_MODEL=llama3.2
+```
+
+**Anything OpenAI-compatible** — Groq, OpenRouter, Together, Gemini's
+compatibility layer, LM Studio, vLLM — point `OPENAI_BASE_URL` at it:
+
+```bash
+LLM_PROVIDER=openai
+OPENAI_BASE_URL=https://api.groq.com/openai/v1
+OPENAI_API_KEY=gsk_...
+SUMMARY_MODEL=llama-3.3-70b-versatile
+```
+
+With no provider configured at all the report still works — the summary falls
+back to a deterministic paragraph built from your scores. Same if the call
+fails, times out, or the model writes something the validator rejects twice.
+Adding a provider is `backend/app/providers/`: one module, two functions.
 
 ## Recalibrating the weakness scores
 

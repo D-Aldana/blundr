@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import config, summary as summary_module
+from app import config, providers, summary as summary_module
 from app.models import Recommendation
 from app.summary import (
     build_facts,
@@ -81,7 +81,7 @@ async def test_llm_output_is_used_when_it_validates(monkeypatch):
     async def fake_call(facts, correction=None):
         return "You missed 7 tactical shots across 20 games. Slow down on forcing moves."
 
-    monkeypatch.setattr(summary_module, "_call_claude", fake_call)
+    monkeypatch.setattr(summary_module, "_call_llm", fake_call)
     result = await generate_llm_summary(CATEGORIES, RECS, 20, "blitz")
 
     assert result.source == "llm"
@@ -95,7 +95,7 @@ async def test_hallucinated_summary_is_retried_then_falls_back(monkeypatch):
         attempts.append(correction)
         return "You lost 14 games in the Caro-Kann."
 
-    monkeypatch.setattr(summary_module, "_call_claude", fake_call)
+    monkeypatch.setattr(summary_module, "_call_llm", fake_call)
     result = await generate_llm_summary(CATEGORIES, RECS, 20, "blitz")
 
     assert len(attempts) == 2
@@ -113,7 +113,7 @@ async def test_retry_that_validates_is_accepted(monkeypatch):
             return "You hung 12 pieces."
         return "You missed 7 forcing shots across 20 games."
 
-    monkeypatch.setattr(summary_module, "_call_claude", fake_call)
+    monkeypatch.setattr(summary_module, "_call_llm", fake_call)
     result = await generate_llm_summary(CATEGORIES, RECS, 20, "blitz")
 
     assert result.source == "llm"
@@ -124,7 +124,7 @@ async def test_llm_failure_falls_back_without_breaking_the_report(monkeypatch):
     async def boom(facts, correction=None):
         raise RuntimeError("no api key")
 
-    monkeypatch.setattr(summary_module, "_call_claude", boom)
+    monkeypatch.setattr(summary_module, "_call_llm", boom)
     result = await generate_llm_summary(CATEGORIES, RECS, 20, "blitz")
 
     assert result.source == "fallback"
@@ -211,7 +211,7 @@ async def test_summary_falls_back_once_the_daily_budget_is_spent(monkeypatch):
         calls.append(1)
         return "You missed 7 tactical shots across 20 games. Slow down on forcing moves."
 
-    monkeypatch.setattr(summary_module, "_call_claude", fake_call)
+    monkeypatch.setattr(summary_module, "_call_llm", fake_call)
     monkeypatch.setattr(summary_module.config, "SUMMARY_DAILY_BUDGET", 1)
 
     first = await generate_llm_summary(CATEGORIES, RECS, 20, "blitz")
@@ -226,7 +226,7 @@ async def test_summary_falls_back_once_the_daily_budget_is_spent(monkeypatch):
 
 @pytest.fixture
 def captured_request(monkeypatch):
-    """Stub the SDK and hand back the kwargs `_call_claude` sent."""
+    """Stub the Anthropic SDK and hand back the kwargs the provider sent."""
     captured: dict = {}
 
     class FakeMessages:
@@ -240,33 +240,42 @@ def captured_request(monkeypatch):
     monkeypatch.setitem(
         sys.modules, "anthropic", SimpleNamespace(AsyncAnthropic=lambda: fake_client)
     )
+    monkeypatch.setattr(config, "LLM_PROVIDER", "anthropic")
     return captured
 
 
 async def test_request_uses_the_configured_model_and_system_prompt(captured_request):
-    text = await summary_module._call_claude(FACTS)
+    text = await summary_module._call_llm(FACTS)
 
     assert text == "Grounded prose."
-    assert captured_request["model"] == config.SUMMARY_MODEL
+    assert captured_request["model"] == providers.model_for("anthropic")
     assert captured_request["system"] == summary_module.SYSTEM_PROMPT
     assert captured_request["messages"] == [
         {"role": "user", "content": f"Facts:\n\n{FACTS}"}
     ]
 
 
+async def test_summary_model_overrides_the_provider_default(captured_request, monkeypatch):
+    monkeypatch.setattr(config, "SUMMARY_MODEL", "claude-opus-5")
+
+    await summary_module._call_llm(FACTS)
+
+    assert captured_request["model"] == "claude-opus-5"
+
+
 async def test_request_sends_no_effort_setting(captured_request):
     """Haiku 4.5 rejects output_config.effort — it must stay off the request."""
-    await summary_module._call_claude(FACTS)
+    await summary_module._call_llm(FACTS)
 
     assert "output_config" not in captured_request
 
 
-def test_default_model_is_haiku():
-    assert "haiku" in config.SUMMARY_MODEL
+def test_anthropic_defaults_to_haiku():
+    assert "haiku" in providers.anthropic.DEFAULT_MODEL
 
 
 async def test_correction_is_appended_to_the_facts(captured_request):
-    await summary_module._call_claude(FACTS, correction="unsupported number: 14")
+    await summary_module._call_llm(FACTS, correction="unsupported number: 14")
 
     content = captured_request["messages"][0]["content"]
     assert content.startswith(f"Facts:\n\n{FACTS}")
@@ -277,7 +286,7 @@ async def test_retries_are_charged_against_the_budget(monkeypatch):
     async def hallucinate(facts, correction=None):
         return "You lost 14 games in the Caro-Kann."
 
-    monkeypatch.setattr(summary_module, "_call_claude", hallucinate)
+    monkeypatch.setattr(summary_module, "_call_llm", hallucinate)
     monkeypatch.setattr(summary_module.config, "SUMMARY_DAILY_BUDGET", 10)
 
     await generate_llm_summary(CATEGORIES, RECS, 20, "blitz")

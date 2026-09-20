@@ -4,5 +4,8 @@ uvicorn[standard]==0.53.0
 httpx==0.28.1
 pydantic==2.13.5
 chess==1.11.2
+# Summary providers. Both are imported lazily, so only the one you configure
+# is ever loaded; Ollama needs neither and goes over httpx.
 anthropic==1.6.0
+openai==3.16.2
 python-dotenv==1.2.3
