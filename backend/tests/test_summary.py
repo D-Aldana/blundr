@@ -141,6 +141,51 @@ def test_spelled_out_number_that_was_never_provided_is_caught():
     assert violations == ["unsupported number: twelve"]
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Develop the habit of scanning for checks first.",  # elo
+        "Keeping that momentum will pay off.",  # pin
+        "That habit is helping you already.",  # pin
+        "Your score is below where it could be.",  # elo
+    ],
+)
+def test_banned_terms_do_not_fire_inside_ordinary_words(text):
+    assert validate_summary(text, FACTS) == []
+
+
+def test_banned_term_as_a_whole_word_is_still_caught():
+    assert validate_summary("You keep missing the pin.", FACTS) == [
+        "unsupported specificity: pin"
+    ]
+
+
+def test_generic_opponent_is_allowed():
+    """The noun is unavoidable in coaching prose and names no one."""
+    text = "Scan for what your opponent is forced to answer before you move."
+    assert validate_summary(text, FACTS) == []
+
+
+def test_compound_number_from_the_facts_is_allowed():
+    facts = build_facts(
+        [make_category("tactical", score=0.63, instances=37)], [], 20, "blitz"
+    )
+    assert validate_summary("You missed the shot in thirty-seven spots.", facts) == []
+    assert validate_summary("You missed it in thirty seven spots.", facts) == []
+
+
+def test_invented_compound_number_is_caught_as_one_violation():
+    violations = validate_summary("You blundered in forty-two games.", FACTS)
+    assert violations == ["unsupported number: forty-two"]
+
+
+def test_compound_ending_in_a_small_word_is_read_as_one_number():
+    facts = build_facts(
+        [make_category("tactical", score=0.5, instances=21)], [], 20, "blitz"
+    )
+    assert validate_summary("Twenty-one positions went that way.", facts) == []
+
+
 def test_small_number_words_are_treated_as_prose_not_claims():
     text = "Do those two things and one habit will carry over."
     assert validate_summary(text, FACTS) == []

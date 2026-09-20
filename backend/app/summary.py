@@ -31,21 +31,31 @@ opponent, a rating, a tactical motif, or any number that is not in the facts.
 - Do not use bullet points or headings. Plain prose only.
 - Do not restate every category; lead with the biggest leak and what to do about it."""
 
-# Specificity the model has no basis for: it never receives openings, motifs,
-# opponents or ratings, so these words in a summary mean it invented something.
+# Specificity the model has no basis for: it never receives openings, motifs
+# or ratings, so these words in a summary mean it invented something.
+# "opponent" is deliberately absent — the generic noun is unavoidable in
+# coaching prose ("what your opponent must answer") and naming a *specific*
+# opponent is already caught by the invented-number and opening checks.
 BANNED_TERMS = [
     "sicilian", "french defense", "caro-kann", "london system", "italian game",
     "ruy lopez", "queen's gambit", "king's indian", "scandinavian", "vienna",
     "english opening", "najdorf", "gambit", "opening repertoire",
     "fork", "pin", "skewer", "discovered attack", "back rank", "zugzwang",
-    "en passant", "windmill", "fianchetto", "opponent", "rating", "elo",
+    "en passant", "windmill", "fianchetto", "rating", "elo",
     "grandmaster", "puzzle rush",
 ]
+
+# Matched on word boundaries, not as substrings: "elo" must not fire on
+# "develop", nor "pin" on "keeping".
+BANNED_RE = {
+    term: re.compile(rf"\b{re.escape(term)}\b", re.IGNORECASE)
+    for term in BANNED_TERMS
+}
 
 NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
 
 # The model does spell counts out ("in seven spots"), which digit matching
-# alone would wave through. One/two/three are left out on purpose — they read
+# alone would wave through. One/two/three are absent on purpose — they read
 # as ordinary prose ("one of those", "do those two things") far more often
 # than as claims, and rejecting them would fail good summaries.
 NUMBER_WORDS = {
@@ -55,7 +65,27 @@ NUMBER_WORDS = {
     "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
     "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90, "hundred": 100,
 }
-WORD_RE = re.compile(r"\b(" + "|".join(NUMBER_WORDS) + r")\b", re.IGNORECASE)
+
+# Only ever read as the tail of a compound ("twenty-one"), never alone, so
+# they stay out of NUMBER_WORDS and never count as a claim on their own.
+JOINING_WORDS = {"one": 1, "two": 2, "three": 3}
+_ALL_NUMBER_WORDS = {**NUMBER_WORDS, **JOINING_WORDS}
+
+# A run of number words is one claim: "thirty-seven" is 37, not 30 and 7.
+# Longest alternative first so "seventeen" never matches as "seven".
+_WORD_ALT = "|".join(sorted(_ALL_NUMBER_WORDS, key=len, reverse=True))
+WORD_RE = re.compile(
+    rf"\b(?:{_WORD_ALT})(?:[-\s]+(?:{_WORD_ALT}))*\b", re.IGNORECASE
+)
+
+
+def _compound_value(phrase: str) -> int:
+    """Value of a run of number words: 'thirty-seven' -> 37, 'one hundred' -> 100."""
+    total = 0
+    for token in re.split(r"[-\s]+", phrase.lower()):
+        value = _ALL_NUMBER_WORDS[token]
+        total = max(total, 1) * 100 if value == 100 else total + value
+    return total
 
 
 def build_facts(
@@ -106,14 +136,15 @@ def validate_summary(summary: str, facts: str) -> list[str]:
     for raw in NUMBER_RE.findall(summary):
         if _norm(float(raw)) not in allowed:
             violations.append(f"unsupported number: {raw}")
-    for word in WORD_RE.findall(summary):
-        if _norm(NUMBER_WORDS[word.lower()]) not in allowed:
-            violations.append(f"unsupported number: {word}")
+    for phrase in WORD_RE.findall(summary):
+        tokens = re.split(r"[-\s]+", phrase.lower())
+        if not any(token in NUMBER_WORDS for token in tokens):
+            continue  # a bare one/two/three is prose, not a count
+        if _norm(_compound_value(phrase)) not in allowed:
+            violations.append(f"unsupported number: {phrase}")
 
-    lowered = summary.lower()
-    facts_lowered = facts.lower()
-    for term in BANNED_TERMS:
-        if term in lowered and term not in facts_lowered:
+    for term, pattern in BANNED_RE.items():
+        if pattern.search(summary) and not pattern.search(facts):
             violations.append(f"unsupported specificity: {term}")
 
     return violations
