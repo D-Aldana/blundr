@@ -33,6 +33,16 @@
     outline: 2px solid var(--color-ink);
     outline-offset: 3px;
   }
+
+  /* Tailwind v4 drops the browser default of a pointer on buttons. */
+  button:not(:disabled),
+  [role='button'] {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
 }
 
 @utility label {
@@ -71,5 +81,43 @@
   .sweep,
   .rise {
     animation: none;
+  }
+}
+
+@media print {
+  @page {
+    margin: 18mm;
+  }
+
+  body {
+    background-image: none;
+    background-color: #fff;
+  }
+
+  .no-print {
+    display: none;
+  }
+
+  /* Animations start from a hidden/collapsed state, which is what would print. */
+  .sweep,
+  .rise {
+    animation: none;
+  }
+
+  main {
+    max-width: none;
+    padding: 0;
+  }
+
+  /* Keep the eval bars filled — browsers drop backgrounds by default. */
+  .sweep,
+  [class*='bg-'] {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  section,
+  article {
+    break-inside: avoid;
   }
 }

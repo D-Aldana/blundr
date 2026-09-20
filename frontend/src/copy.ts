@@ -7,6 +7,24 @@ export const CATEGORY_LABEL: Record<Category['name'], string> = {
   conversion: 'Conversion',
 }
 
+/** Plain-English versions of the classifier rules in backend/app/classify.py. */
+export const CATEGORY_HELP: Record<Category['name'], string> = {
+  tactical:
+    'Positions where a forcing move — a check, capture or direct threat — was the best move and you missed it, losing a pawn and a half or more.',
+  endgame:
+    'Losing a pawn or more in positions down to twelve pieces, where the game is decided by technique rather than calculation.',
+  time_management:
+    'Only counts when the clock is the cause: your mistakes on a low clock have to be meaningfully worse than the ones you make with time to spare.',
+  conversion:
+    'Games where you reached a clearly winning position and then let it slip back to level, or lost outright.',
+}
+
+export const SCORE_HELP =
+  'Each score is how often a weakness shows up against how often it could have, so a player with fewer chances is not punished for them. 1.00 is roughly the worst 1 in 10 of comparable players. Red marks your weakest area.'
+
+export const CONFIDENCE_HELP =
+  'Scores need a real sample. Fewer than three instances in twenty games is left unscored; three to five is marked low confidence, meaning the direction is probably right but the exact number is not.'
+
 /** `step` is a machine key by design (PRD §14) so the wait can have a voice. */
 export const STEP_COPY: Record<string, string> = {
   fetching_games: 'Pulling your last 20 games',
