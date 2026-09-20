@@ -1,12 +1,24 @@
 import { useState } from 'react'
 import type { Category, Report as ReportData } from '../api'
-import { CATEGORY_LABEL } from '../copy'
+import {
+  CATEGORY_HELP,
+  CATEGORY_LABEL,
+  CONFIDENCE_HELP,
+  SCORE_HELP,
+} from '../copy'
+import { Tooltip } from './Tooltip'
 
 /** Mirrors the backend's ranking (recommend.rank_categories): worst first. */
 const rank = (categories: Category[]) =>
   categories
     .filter((c) => c.confidence !== 'insufficient' && c.score > 0)
     .sort((a, b) => b.score - a.score || b.instances - a.instances)
+
+const ConfidenceTip = () => (
+  <span className="ml-1.5">
+    <Tooltip label="What confidence means" text={CONFIDENCE_HELP} align="right" />
+  </span>
+)
 
 function EvalBar({
   category,
@@ -23,8 +35,14 @@ function EvalBar({
 
   return (
     <li className="grid grid-cols-[1fr_auto] items-baseline gap-x-4 gap-y-2 py-4 sm:grid-cols-[13rem_1fr_auto]">
-      <span className={`font-display font-semibold ${unscored ? 'text-ink-soft' : ''}`}>
+      <span
+        className={`flex items-center gap-1.5 font-display font-semibold ${unscored ? 'text-ink-soft' : ''}`}
+      >
         {CATEGORY_LABEL[category.name]}
+        <Tooltip
+          label={`What ${CATEGORY_LABEL[category.name]} measures`}
+          text={CATEGORY_HELP[category.name]}
+        />
       </span>
 
       <div className="col-span-2 order-last h-2.5 border border-ink/20 bg-paper sm:order-none sm:col-span-1">
@@ -38,13 +56,19 @@ function EvalBar({
 
       <span className="text-right font-mono text-sm tabular-nums text-ink-soft">
         {unscored ? (
-          'too few to judge'
+          <>
+            too few to judge
+            <ConfidenceTip />
+          </>
         ) : (
           <>
             {category.score.toFixed(2)}
             <span className="ml-2 opacity-60">{category.instances}×</span>
             {category.confidence === 'low' && (
-              <span className="ml-2 opacity-60">low confidence</span>
+              <>
+                <span className="ml-2 opacity-60">low confidence</span>
+                <ConfidenceTip />
+              </>
             )}
           </>
         )}
@@ -72,6 +96,16 @@ export function Report({
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // Browsers name the saved PDF after the document title.
+  const print = () => {
+    const title = document.title
+    document.title = `blundr-${report.username}-${report.time_control}`
+    window.addEventListener('afterprint', () => (document.title = title), {
+      once: true,
+    })
+    window.print()
+  }
+
   return (
     <main className="mx-auto max-w-2xl px-5 py-16">
       <div className="flex items-baseline justify-between">
@@ -97,7 +131,10 @@ export function Report({
       </header>
 
       <section className="rise mt-14" style={{ animationDelay: '120ms' }}>
-        <h2 className="label border-b border-ink/25 pb-2">Four fundamentals</h2>
+        <h2 className="label flex items-center gap-2 border-b border-ink/25 pb-2">
+          Four fundamentals
+          <Tooltip label="How these scores are calculated" text={SCORE_HELP} />
+        </h2>
         <ul className="divide-y divide-ink/10">
           {report.categories.map((c, i) => (
             <EvalBar
@@ -133,12 +170,18 @@ export function Report({
         )}
       </section>
 
-      <footer className="mt-14 flex flex-wrap gap-3 border-t border-ink/25 pt-6">
+      <footer className="no-print mt-14 flex flex-wrap gap-3 border-t border-ink/25 pt-6">
         <button
           onClick={copy}
           className="border border-ink px-5 py-2.5 font-mono text-sm hover:bg-ink hover:text-paper"
         >
           {copied ? 'Copied' : 'Copy result'}
+        </button>
+        <button
+          onClick={print}
+          className="border border-ink px-5 py-2.5 font-mono text-sm hover:bg-ink hover:text-paper"
+        >
+          Save as PDF
         </button>
         <button
           onClick={onRestart}
