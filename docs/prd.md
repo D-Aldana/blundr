@@ -359,8 +359,6 @@ Built to the Section 8 flow as three views behind a single state machine (`front
 
 `VITE_API_BASE` points the client at the backend (default `http://localhost:8000`); the backend's `ALLOWED_ORIGINS` already permits the Vite dev origin.
 
-**Not yet verified:** nobody has looked at the rendered page in a browser. The build and typecheck are clean and the report shape is confirmed against real API responses field for field, but the visual layout has had no review.
-
 ## 18. Future phases (not v1)
 
 - Rolling/persisted baseline + trend view (recent 20 vs. longer-term).
