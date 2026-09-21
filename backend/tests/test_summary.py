@@ -1,6 +1,9 @@
+import sys
+from types import SimpleNamespace
+
 import pytest
 
-from app import summary as summary_module
+from app import config, providers, summary as summary_module
 from app.models import Recommendation
 from app.summary import (
     build_facts,
@@ -8,6 +11,7 @@ from app.summary import (
     generate_llm_summary,
     validate_summary,
 )
+from app.recommend import rank_categories
 from conftest import make_category
 
 CATEGORIES = [
@@ -78,7 +82,7 @@ async def test_llm_output_is_used_when_it_validates(monkeypatch):
     async def fake_call(facts, correction=None):
         return "You missed 7 tactical shots across 20 games. Slow down on forcing moves."
 
-    monkeypatch.setattr(summary_module, "_call_claude", fake_call)
+    monkeypatch.setattr(summary_module, "_call_llm", fake_call)
     result = await generate_llm_summary(CATEGORIES, RECS, 20, "blitz")
 
     assert result.source == "llm"
@@ -92,7 +96,7 @@ async def test_hallucinated_summary_is_retried_then_falls_back(monkeypatch):
         attempts.append(correction)
         return "You lost 14 games in the Caro-Kann."
 
-    monkeypatch.setattr(summary_module, "_call_claude", fake_call)
+    monkeypatch.setattr(summary_module, "_call_llm", fake_call)
     result = await generate_llm_summary(CATEGORIES, RECS, 20, "blitz")
 
     assert len(attempts) == 2
@@ -110,7 +114,7 @@ async def test_retry_that_validates_is_accepted(monkeypatch):
             return "You hung 12 pieces."
         return "You missed 7 forcing shots across 20 games."
 
-    monkeypatch.setattr(summary_module, "_call_claude", fake_call)
+    monkeypatch.setattr(summary_module, "_call_llm", fake_call)
     result = await generate_llm_summary(CATEGORIES, RECS, 20, "blitz")
 
     assert result.source == "llm"
@@ -121,7 +125,7 @@ async def test_llm_failure_falls_back_without_breaking_the_report(monkeypatch):
     async def boom(facts, correction=None):
         raise RuntimeError("no api key")
 
-    monkeypatch.setattr(summary_module, "_call_claude", boom)
+    monkeypatch.setattr(summary_module, "_call_llm", boom)
     result = await generate_llm_summary(CATEGORIES, RECS, 20, "blitz")
 
     assert result.source == "fallback"
@@ -136,6 +140,51 @@ def test_spelled_out_number_from_the_facts_is_allowed():
 def test_spelled_out_number_that_was_never_provided_is_caught():
     violations = validate_summary("You blundered in twelve games.", FACTS)
     assert violations == ["unsupported number: twelve"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Develop the habit of scanning for checks first.",  # elo
+        "Keeping that momentum will pay off.",  # pin
+        "That habit is helping you already.",  # pin
+        "Your score is below where it could be.",  # elo
+    ],
+)
+def test_banned_terms_do_not_fire_inside_ordinary_words(text):
+    assert validate_summary(text, FACTS) == []
+
+
+def test_banned_term_as_a_whole_word_is_still_caught():
+    assert validate_summary("You keep missing the pin.", FACTS) == [
+        "unsupported specificity: pin"
+    ]
+
+
+def test_generic_opponent_is_allowed():
+    """The noun is unavoidable in coaching prose and names no one."""
+    text = "Scan for what your opponent is forced to answer before you move."
+    assert validate_summary(text, FACTS) == []
+
+
+def test_compound_number_from_the_facts_is_allowed():
+    facts = build_facts(
+        [make_category("tactical", score=0.63, instances=37)], [], 20, "blitz"
+    )
+    assert validate_summary("You missed the shot in thirty-seven spots.", facts) == []
+    assert validate_summary("You missed it in thirty seven spots.", facts) == []
+
+
+def test_invented_compound_number_is_caught_as_one_violation():
+    violations = validate_summary("You blundered in forty-two games.", FACTS)
+    assert violations == ["unsupported number: forty-two"]
+
+
+def test_compound_ending_in_a_small_word_is_read_as_one_number():
+    facts = build_facts(
+        [make_category("tactical", score=0.5, instances=21)], [], 20, "blitz"
+    )
+    assert validate_summary("Twenty-one positions went that way.", facts) == []
 
 
 def test_small_number_words_are_treated_as_prose_not_claims():
@@ -163,7 +212,7 @@ async def test_summary_falls_back_once_the_daily_budget_is_spent(monkeypatch):
         calls.append(1)
         return "You missed 7 tactical shots across 20 games. Slow down on forcing moves."
 
-    monkeypatch.setattr(summary_module, "_call_claude", fake_call)
+    monkeypatch.setattr(summary_module, "_call_llm", fake_call)
     monkeypatch.setattr(summary_module.config, "SUMMARY_DAILY_BUDGET", 1)
 
     first = await generate_llm_summary(CATEGORIES, RECS, 20, "blitz")
@@ -176,12 +225,153 @@ async def test_summary_falls_back_once_the_daily_budget_is_spent(monkeypatch):
     assert len(calls) == 1
 
 
+@pytest.fixture
+def captured_request(monkeypatch):
+    """Stub the Anthropic SDK and hand back the kwargs the provider sent."""
+    captured: dict = {}
+
+    class FakeMessages:
+        async def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="  Grounded prose.  ")]
+            )
+
+    fake_client = SimpleNamespace(messages=FakeMessages())
+    monkeypatch.setitem(
+        sys.modules, "anthropic", SimpleNamespace(AsyncAnthropic=lambda: fake_client)
+    )
+    monkeypatch.setattr(config, "LLM_PROVIDER", "anthropic")
+    return captured
+
+
+async def test_request_uses_the_configured_model_and_system_prompt(captured_request):
+    text = await summary_module._call_llm(FACTS)
+
+    assert text == "Grounded prose."
+    assert captured_request["model"] == providers.model_for("anthropic")
+    assert captured_request["system"] == summary_module.SYSTEM_PROMPT
+    assert captured_request["messages"] == [
+        {"role": "user", "content": f"Facts:\n\n{FACTS}"}
+    ]
+
+
+async def test_summary_model_overrides_the_provider_default(captured_request, monkeypatch):
+    monkeypatch.setattr(config, "SUMMARY_MODEL", "claude-opus-5")
+
+    await summary_module._call_llm(FACTS)
+
+    assert captured_request["model"] == "claude-opus-5"
+
+
+async def test_request_sends_no_effort_setting(captured_request):
+    """Haiku 4.5 rejects output_config.effort — it must stay off the request."""
+    await summary_module._call_llm(FACTS)
+
+    assert "output_config" not in captured_request
+
+
+def test_anthropic_defaults_to_haiku():
+    assert "haiku" in providers.anthropic.DEFAULT_MODEL
+
+
+async def test_correction_is_appended_to_the_facts(captured_request):
+    await summary_module._call_llm(FACTS, correction="unsupported number: 14")
+
+    content = captured_request["messages"][0]["content"]
+    assert content.startswith(f"Facts:\n\n{FACTS}")
+    assert "unsupported number: 14" in content
+
+
 async def test_retries_are_charged_against_the_budget(monkeypatch):
     async def hallucinate(facts, correction=None):
         return "You lost 14 games in the Caro-Kann."
 
-    monkeypatch.setattr(summary_module, "_call_claude", hallucinate)
+    monkeypatch.setattr(summary_module, "_call_llm", hallucinate)
     monkeypatch.setattr(summary_module.config, "SUMMARY_DAILY_BUDGET", 10)
 
     await generate_llm_summary(CATEGORIES, RECS, 20, "blitz")
     assert len(summary_module._llm_calls) == 2
+
+
+# --- Leading category --------------------------------------------------------
+
+# The categories behind the real report that surfaced this: endgame ranks top
+# on score, but time management has more instances and the model led with it.
+CONTRADICTION_CATEGORIES = [
+    make_category("endgame", score=0.48, instances=3, confidence="low",
+                  details={"games_affected": 3}),
+    make_category("time_management", score=0.39, instances=5, confidence="low"),
+]
+
+REAL_CONTRADICTING_SUMMARY = (
+    "Your biggest leak right now is time pressure: when you're down to your "
+    "final seconds, your moves deteriorate sharply. Front-load your thinking "
+    "so you preserve clock for the middlegame and endgame."
+)
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Your endgame technique is what's costing you.", "endgame"),
+        ("You keep missing tactics that were right there.", "tactical"),
+        ("Your moves fall apart under time pressure.", "time_management"),
+        ("You reach a winning position and can't convert.", "conversion"),
+        ("Keep playing and check back in a few weeks.", None),
+    ],
+)
+def test_leading_category_is_read_from_prose(text, expected):
+    assert summary_module._leading_category(text) == expected
+
+
+def test_first_category_mentioned_wins_not_the_most_mentioned():
+    text = "Your endgame is the issue. Clock, clock, and more clock after that."
+    assert summary_module._leading_category(text) == "endgame"
+
+
+def test_summary_leading_with_the_wrong_category_is_caught():
+    violations = validate_summary(
+        REAL_CONTRADICTING_SUMMARY, FACTS, leads_with="endgame"
+    )
+    assert len(violations) == 1
+    assert "leads with time_management" in violations[0]
+    assert "endgame" in violations[0]
+
+
+def test_summary_leading_with_the_right_category_passes():
+    text = "Your endgame technique is the clearest leak; drill basic endings."
+    assert validate_summary(text, FACTS, leads_with="endgame") == []
+
+
+def test_unrecognised_prose_is_not_rejected():
+    """Lenient by design — a wrong rejection costs a retry and a worse paragraph."""
+    text = "You are closer to your next level than these games suggest."
+    assert validate_summary(text, FACTS, leads_with="endgame") == []
+
+
+def test_leader_check_is_off_unless_a_leader_is_given():
+    assert validate_summary(REAL_CONTRADICTING_SUMMARY, FACTS) == []
+
+
+async def test_contradicting_summary_is_retried_then_falls_back(monkeypatch):
+    attempts = []
+
+    async def contradict(facts, correction=None):
+        attempts.append(correction)
+        return REAL_CONTRADICTING_SUMMARY
+
+    monkeypatch.setattr(summary_module, "_call_llm", contradict)
+    result = await generate_llm_summary(CONTRADICTION_CATEGORIES, [], 20, "blitz")
+
+    assert len(attempts) == 2
+    assert "lead with that instead" in attempts[1]
+    assert result.source == "fallback"
+
+
+def test_the_fallback_paragraph_never_contradicts_the_headline():
+    """It is built from the same ranking, so it must satisfy its own check."""
+    ranked = rank_categories(CONTRADICTION_CATEGORIES)
+    facts = build_facts(CONTRADICTION_CATEGORIES, [], 20, "blitz")
+    text = fallback_summary(CONTRADICTION_CATEGORIES, [])
+    assert validate_summary(text, facts, leads_with=ranked[0].name) == []

@@ -70,7 +70,7 @@ async def test_pipeline_produces_a_grounded_report(monkeypatch):
     assert all(r.evidence for r in recommendations)
 
     monkeypatch.setattr(
-        "app.summary._call_claude",
+        "app.summary._call_llm",
         _raise,
     )
     summary = await generate_llm_summary(categories, recommendations, 20, "blitz")
@@ -98,7 +98,7 @@ async def test_clean_games_produce_no_recommendations(monkeypatch):
     categories = classify_weaknesses(rows)
     assert all(c.score == 0.0 for c in categories)
 
-    monkeypatch.setattr("app.summary._call_claude", _raise)
+    monkeypatch.setattr("app.summary._call_llm", _raise)
     summary = await generate_llm_summary(categories, [], 20, "blitz")
     report = build_report(categories, [], summary, 20, "blitz", "TestPlayer")
 

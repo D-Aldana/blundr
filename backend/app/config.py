@@ -17,8 +17,10 @@ VALID_TIME_CLASSES = set(TIME_CONTROLS)
 
 # --- Chess.com fetch ---------------------------------------------------------
 CHESS_COM_BASE = "https://api.chess.com/pub"
-# Chess.com returns 403 without a descriptive User-Agent. Set a real contact
-# address via CHESS_COM_CONTACT before deploying.
+# Chess.com asks for a contact address in the User-Agent so they can reach you
+# about traffic from your instance. The placeholder below is accepted, but set
+# CHESS_COM_CONTACT to your own address — it's their stated etiquette, and it
+# keeps your traffic from being lumped in with every other clone's.
 CHESS_COM_CONTACT = os.getenv("CHESS_COM_CONTACT", "you@example.com")
 CHESS_COM_HEADERS = {"User-Agent": f"blundr/0.1 ({CHESS_COM_CONTACT})"}
 # Bounds on how far back we walk a very active player's monthly archives.
@@ -75,7 +77,18 @@ MIN_INSTANCES = 3
 LOW_CONFIDENCE_MAX = 5
 
 # --- LLM summary -------------------------------------------------------------
-SUMMARY_MODEL = os.getenv("SUMMARY_MODEL", "claude-opus-5")
+# Which provider writes the closing paragraph. Left unset, the first provider
+# whose API key is present wins; set it explicitly to pick one, and to reach
+# Ollama at all (it has no key to detect). See app/providers/.
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "").strip().lower()
+# Unset means "whatever that provider's default is" — see providers/*.DEFAULT_MODEL.
+SUMMARY_MODEL = os.getenv("SUMMARY_MODEL", "").strip()
+# Any OpenAI-compatible endpoint: Groq, OpenRouter, Gemini's compat layer,
+# LM Studio, vLLM. Unset talks to OpenAI itself.
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "").strip()
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+# Generous, because a local model on a laptop CPU is not fast.
+LLM_TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "120"))
 SUMMARY_MAX_TOKENS = 2000
 SUMMARY_MAX_ATTEMPTS = 2
 
@@ -96,11 +109,12 @@ USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]{3,25}$")
 MAX_CONCURRENT_ANALYSES = int(os.getenv("MAX_CONCURRENT_ANALYSES", "1"))
 MAX_QUEUED_ANALYSES = int(os.getenv("MAX_QUEUED_ANALYSES", "8"))
 
-# Per-IP sliding windows: (requests, window_seconds). Analysis is expensive and
-# rationed; the eligibility check is cheap for us but not free, since it walks
-# Chess.com archives on our IP.
-RATE_LIMIT_ANALYZE = (int(os.getenv("RATE_LIMIT_ANALYZE", "5")), 3600.0)
-RATE_LIMIT_ELIGIBILITY = (int(os.getenv("RATE_LIMIT_ELIGIBILITY", "20")), 3600.0)
+# Per-IP sliding windows: (requests, window_seconds). Sized for the way this
+# actually runs — one person on their own machine, analyzing their account and
+# their friends' — so the limits are a runaway-loop backstop, not a ration.
+# Lower them substantially if you ever put an instance on the open internet.
+RATE_LIMIT_ANALYZE = (int(os.getenv("RATE_LIMIT_ANALYZE", "50")), 3600.0)
+RATE_LIMIT_ELIGIBILITY = (int(os.getenv("RATE_LIMIT_ELIGIBILITY", "200")), 3600.0)
 
 # Only trust X-Forwarded-For when a proxy that overwrites it is actually in
 # front (Render, Cloudflare). Trusting it otherwise lets a caller forge an IP

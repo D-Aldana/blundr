@@ -11,7 +11,7 @@ import re
 import time
 from typing import Optional
 
-from . import config
+from . import config, providers
 from .models import CategoryResult, Recommendation, SummaryResult
 from .recommend import rank_categories
 
@@ -31,21 +31,53 @@ opponent, a rating, a tactical motif, or any number that is not in the facts.
 - Do not use bullet points or headings. Plain prose only.
 - Do not restate every category; lead with the biggest leak and what to do about it."""
 
-# Specificity the model has no basis for: it never receives openings, motifs,
-# opponents or ratings, so these words in a summary mean it invented something.
+# Specificity the model has no basis for: it never receives openings, motifs
+# or ratings, so these words in a summary mean it invented something.
+# "opponent" is deliberately absent — the generic noun is unavoidable in
+# coaching prose ("what your opponent must answer") and naming a *specific*
+# opponent is already caught by the invented-number and opening checks.
 BANNED_TERMS = [
     "sicilian", "french defense", "caro-kann", "london system", "italian game",
     "ruy lopez", "queen's gambit", "king's indian", "scandinavian", "vienna",
     "english opening", "najdorf", "gambit", "opening repertoire",
     "fork", "pin", "skewer", "discovered attack", "back rank", "zugzwang",
-    "en passant", "windmill", "fianchetto", "opponent", "rating", "elo",
+    "en passant", "windmill", "fianchetto", "rating", "elo",
     "grandmaster", "puzzle rush",
 ]
+
+# Matched on word boundaries, not as substrings: "elo" must not fire on
+# "develop", nor "pin" on "keeping".
+BANNED_RE = {
+    term: re.compile(rf"\b{re.escape(term)}\b", re.IGNORECASE)
+    for term in BANNED_TERMS
+}
+
+# How each category shows up in coaching prose, which never uses the internal
+# names — "time pressure", not "time_management". Only ever used to tell which
+# weakness a sentence is about, so these stay narrow: "check" and "capture" are
+# absent from the tactical cues because "check the clock" is time management,
+# and generic praise like "your pieces" belongs to no category at all.
+CATEGORY_CUES = {
+    "tactical": r"tactic\w*|forcing (?:move|shot|sequence)|missed shot|combination",
+    "endgame": r"end ?game\w*|technical ending|endings",
+    "time_management": (
+        r"time (?:pressure|trouble|management|scramble)|clock|low on time"
+        r"|rush\w*|seconds left|under pressure"
+    ),
+    "conversion": (
+        r"conver(?:t|sion|ting)\w*|winning position|close out|closing out"
+        r"|finish(?:ing)? (?:off|them|the job)|throw\w* away"
+    ),
+}
+
+CATEGORY_CUE_RE = {
+    name: re.compile(pattern, re.IGNORECASE) for name, pattern in CATEGORY_CUES.items()
+}
 
 NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
 
 # The model does spell counts out ("in seven spots"), which digit matching
-# alone would wave through. One/two/three are left out on purpose — they read
+# alone would wave through. One/two/three are absent on purpose — they read
 # as ordinary prose ("one of those", "do those two things") far more often
 # than as claims, and rejecting them would fail good summaries.
 NUMBER_WORDS = {
@@ -55,7 +87,27 @@ NUMBER_WORDS = {
     "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
     "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90, "hundred": 100,
 }
-WORD_RE = re.compile(r"\b(" + "|".join(NUMBER_WORDS) + r")\b", re.IGNORECASE)
+
+# Only ever read as the tail of a compound ("twenty-one"), never alone, so
+# they stay out of NUMBER_WORDS and never count as a claim on their own.
+JOINING_WORDS = {"one": 1, "two": 2, "three": 3}
+_ALL_NUMBER_WORDS = {**NUMBER_WORDS, **JOINING_WORDS}
+
+# A run of number words is one claim: "thirty-seven" is 37, not 30 and 7.
+# Longest alternative first so "seventeen" never matches as "seven".
+_WORD_ALT = "|".join(sorted(_ALL_NUMBER_WORDS, key=len, reverse=True))
+WORD_RE = re.compile(
+    rf"\b(?:{_WORD_ALT})(?:[-\s]+(?:{_WORD_ALT}))*\b", re.IGNORECASE
+)
+
+
+def _compound_value(phrase: str) -> int:
+    """Value of a run of number words: 'thirty-seven' -> 37, 'one hundred' -> 100."""
+    total = 0
+    for token in re.split(r"[-\s]+", phrase.lower()):
+        value = _ALL_NUMBER_WORDS[token]
+        total = max(total, 1) * 100 if value == 100 else total + value
+    return total
 
 
 def build_facts(
@@ -73,6 +125,16 @@ def build_facts(
                 f"- {category.name}: score {category.score:.2f}, "
                 f"{category.instances} instances, confidence {category.confidence}."
             )
+
+    # Stated outright rather than left to be inferred from the scores, because
+    # the headline is built from this same ranking and the prose has to match it.
+    ranked = rank_categories(categories)
+    if ranked:
+        lines += [
+            "",
+            f"Biggest leak, which the report's headline already names: "
+            f"{ranked[0].name}. Lead with this one.",
+        ]
 
     lines += ["", "Recommendations already written for the player:"]
     if recommendations:
@@ -99,22 +161,53 @@ def _norm(value: float) -> str:
     return str(int(value)) if value == int(value) else f"{value:g}"
 
 
-def validate_summary(summary: str, facts: str) -> list[str]:
-    """Return the specificity violations in `summary`, empty list if clean."""
+def _leading_category(summary: str) -> Optional[str]:
+    """Which weakness the prose raises first, or None if it names none.
+
+    Deliberately lenient: a summary whose vocabulary we don't recognise reads as
+    "can't tell" and is left alone, because a wrong rejection costs a retry and
+    then a worse paragraph.
+    """
+    found = [
+        (match.start(), name)
+        for name, pattern in CATEGORY_CUE_RE.items()
+        if (match := pattern.search(summary))
+    ]
+    return min(found)[1] if found else None
+
+
+def validate_summary(
+    summary: str, facts: str, leads_with: Optional[str] = None
+) -> list[str]:
+    """Return the specificity violations in `summary`, empty list if clean.
+
+    `leads_with` is the category the headline names. Passing it also checks the
+    prose opens on that same weakness, so the report doesn't answer "what's my
+    biggest leak" two different ways.
+    """
     violations = []
     allowed = _allowed_numbers(facts)
     for raw in NUMBER_RE.findall(summary):
         if _norm(float(raw)) not in allowed:
             violations.append(f"unsupported number: {raw}")
-    for word in WORD_RE.findall(summary):
-        if _norm(NUMBER_WORDS[word.lower()]) not in allowed:
-            violations.append(f"unsupported number: {word}")
+    for phrase in WORD_RE.findall(summary):
+        tokens = re.split(r"[-\s]+", phrase.lower())
+        if not any(token in NUMBER_WORDS for token in tokens):
+            continue  # a bare one/two/three is prose, not a count
+        if _norm(_compound_value(phrase)) not in allowed:
+            violations.append(f"unsupported number: {phrase}")
 
-    lowered = summary.lower()
-    facts_lowered = facts.lower()
-    for term in BANNED_TERMS:
-        if term in lowered and term not in facts_lowered:
+    for term, pattern in BANNED_RE.items():
+        if pattern.search(summary) and not pattern.search(facts):
             violations.append(f"unsupported specificity: {term}")
+
+    if leads_with:
+        leader = _leading_category(summary)
+        if leader and leader != leads_with:
+            violations.append(
+                f"leads with {leader}, but the report's headline names "
+                f"{leads_with} as the biggest leak — lead with that instead"
+            )
 
     return violations
 
@@ -148,9 +241,8 @@ def fallback_summary(
     return " ".join(parts)
 
 
-async def _call_claude(facts: str, correction: Optional[str] = None) -> str:
-    import anthropic
-
+async def _call_llm(facts: str, correction: Optional[str] = None) -> str:
+    """Ask the configured provider for the paragraph. Raises if none is set."""
     user_content = f"Facts:\n\n{facts}"
     if correction:
         user_content += (
@@ -158,15 +250,13 @@ async def _call_claude(facts: str, correction: Optional[str] = None) -> str:
             f"{correction}. Rewrite it using only the facts above."
         )
 
-    client = anthropic.AsyncAnthropic()
-    response = await client.messages.create(
-        model=config.SUMMARY_MODEL,
-        max_tokens=config.SUMMARY_MAX_TOKENS,
-        output_config={"effort": "low"},
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_content}],
+    resolved = providers.resolve()
+    if resolved is None:
+        raise providers.ProviderError("no LLM provider configured")
+    name, provider = resolved
+    return await provider.complete(
+        SYSTEM_PROMPT, user_content, providers.model_for(name)
     )
-    return "".join(b.text for b in response.content if b.type == "text").strip()
 
 
 # Timestamps of paid LLM calls in the last 24h. A global ceiling, because the
@@ -191,6 +281,10 @@ async def generate_llm_summary(
     time_control: str,
 ) -> SummaryResult:
     facts = build_facts(categories, recommendations, games_analyzed, time_control)
+    # The headline is built from the same ranking, so this is what the prose
+    # has to agree with.
+    ranked = rank_categories(categories)
+    leader = ranked[0].name if ranked else None
     all_violations: list[str] = []
     correction = None
 
@@ -201,13 +295,13 @@ async def generate_llm_summary(
             break
 
         try:
-            text = await _call_claude(facts, correction)
+            text = await _call_llm(facts, correction)
         except Exception as exc:  # noqa: BLE001 — any LLM failure falls back
             log.warning("LLM summary unavailable: %s", exc)
             all_violations.append(f"llm_error: {exc}")
             break
 
-        violations = validate_summary(text, facts)
+        violations = validate_summary(text, facts, leads_with=leader)
         if not violations:
             return SummaryResult(text=text, source="llm", violations=all_violations)
 
