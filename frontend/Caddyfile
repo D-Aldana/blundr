@@ -1,0 +1,16 @@
+# Serves the built frontend and proxies the API under the same origin, so the
+# browser never makes a cross-origin request and the image doesn't bake in a
+# domain. SITE_ADDRESS is the domain for automatic TLS, or :80 to run without.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	handle_path /api/* {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
