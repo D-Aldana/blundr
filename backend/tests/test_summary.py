@@ -11,6 +11,7 @@ from app.summary import (
     generate_llm_summary,
     validate_summary,
 )
+from app.recommend import rank_categories
 from conftest import make_category
 
 CATEGORIES = [
@@ -291,3 +292,86 @@ async def test_retries_are_charged_against_the_budget(monkeypatch):
 
     await generate_llm_summary(CATEGORIES, RECS, 20, "blitz")
     assert len(summary_module._llm_calls) == 2
+
+
+# --- Leading category --------------------------------------------------------
+
+# The categories behind the real report that surfaced this: endgame ranks top
+# on score, but time management has more instances and the model led with it.
+CONTRADICTION_CATEGORIES = [
+    make_category("endgame", score=0.48, instances=3, confidence="low",
+                  details={"games_affected": 3}),
+    make_category("time_management", score=0.39, instances=5, confidence="low"),
+]
+
+REAL_CONTRADICTING_SUMMARY = (
+    "Your biggest leak right now is time pressure: when you're down to your "
+    "final seconds, your moves deteriorate sharply. Front-load your thinking "
+    "so you preserve clock for the middlegame and endgame."
+)
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Your endgame technique is what's costing you.", "endgame"),
+        ("You keep missing tactics that were right there.", "tactical"),
+        ("Your moves fall apart under time pressure.", "time_management"),
+        ("You reach a winning position and can't convert.", "conversion"),
+        ("Keep playing and check back in a few weeks.", None),
+    ],
+)
+def test_leading_category_is_read_from_prose(text, expected):
+    assert summary_module._leading_category(text) == expected
+
+
+def test_first_category_mentioned_wins_not_the_most_mentioned():
+    text = "Your endgame is the issue. Clock, clock, and more clock after that."
+    assert summary_module._leading_category(text) == "endgame"
+
+
+def test_summary_leading_with_the_wrong_category_is_caught():
+    violations = validate_summary(
+        REAL_CONTRADICTING_SUMMARY, FACTS, leads_with="endgame"
+    )
+    assert len(violations) == 1
+    assert "leads with time_management" in violations[0]
+    assert "endgame" in violations[0]
+
+
+def test_summary_leading_with_the_right_category_passes():
+    text = "Your endgame technique is the clearest leak; drill basic endings."
+    assert validate_summary(text, FACTS, leads_with="endgame") == []
+
+
+def test_unrecognised_prose_is_not_rejected():
+    """Lenient by design — a wrong rejection costs a retry and a worse paragraph."""
+    text = "You are closer to your next level than these games suggest."
+    assert validate_summary(text, FACTS, leads_with="endgame") == []
+
+
+def test_leader_check_is_off_unless_a_leader_is_given():
+    assert validate_summary(REAL_CONTRADICTING_SUMMARY, FACTS) == []
+
+
+async def test_contradicting_summary_is_retried_then_falls_back(monkeypatch):
+    attempts = []
+
+    async def contradict(facts, correction=None):
+        attempts.append(correction)
+        return REAL_CONTRADICTING_SUMMARY
+
+    monkeypatch.setattr(summary_module, "_call_llm", contradict)
+    result = await generate_llm_summary(CONTRADICTION_CATEGORIES, [], 20, "blitz")
+
+    assert len(attempts) == 2
+    assert "lead with that instead" in attempts[1]
+    assert result.source == "fallback"
+
+
+def test_the_fallback_paragraph_never_contradicts_the_headline():
+    """It is built from the same ranking, so it must satisfy its own check."""
+    ranked = rank_categories(CONTRADICTION_CATEGORIES)
+    facts = build_facts(CONTRADICTION_CATEGORIES, [], 20, "blitz")
+    text = fallback_summary(CONTRADICTION_CATEGORIES, [])
+    assert validate_summary(text, facts, leads_with=ranked[0].name) == []

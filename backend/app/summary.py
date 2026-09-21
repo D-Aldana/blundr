@@ -52,6 +52,28 @@ BANNED_RE = {
     for term in BANNED_TERMS
 }
 
+# How each category shows up in coaching prose, which never uses the internal
+# names — "time pressure", not "time_management". Only ever used to tell which
+# weakness a sentence is about, so these stay narrow: "check" and "capture" are
+# absent from the tactical cues because "check the clock" is time management,
+# and generic praise like "your pieces" belongs to no category at all.
+CATEGORY_CUES = {
+    "tactical": r"tactic\w*|forcing (?:move|shot|sequence)|missed shot|combination",
+    "endgame": r"end ?game\w*|technical ending|endings",
+    "time_management": (
+        r"time (?:pressure|trouble|management|scramble)|clock|low on time"
+        r"|rush\w*|seconds left|under pressure"
+    ),
+    "conversion": (
+        r"conver(?:t|sion|ting)\w*|winning position|close out|closing out"
+        r"|finish(?:ing)? (?:off|them|the job)|throw\w* away"
+    ),
+}
+
+CATEGORY_CUE_RE = {
+    name: re.compile(pattern, re.IGNORECASE) for name, pattern in CATEGORY_CUES.items()
+}
+
 NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
 
 # The model does spell counts out ("in seven spots"), which digit matching
@@ -104,6 +126,16 @@ def build_facts(
                 f"{category.instances} instances, confidence {category.confidence}."
             )
 
+    # Stated outright rather than left to be inferred from the scores, because
+    # the headline is built from this same ranking and the prose has to match it.
+    ranked = rank_categories(categories)
+    if ranked:
+        lines += [
+            "",
+            f"Biggest leak, which the report's headline already names: "
+            f"{ranked[0].name}. Lead with this one.",
+        ]
+
     lines += ["", "Recommendations already written for the player:"]
     if recommendations:
         for rec in recommendations:
@@ -129,8 +161,30 @@ def _norm(value: float) -> str:
     return str(int(value)) if value == int(value) else f"{value:g}"
 
 
-def validate_summary(summary: str, facts: str) -> list[str]:
-    """Return the specificity violations in `summary`, empty list if clean."""
+def _leading_category(summary: str) -> Optional[str]:
+    """Which weakness the prose raises first, or None if it names none.
+
+    Deliberately lenient: a summary whose vocabulary we don't recognise reads as
+    "can't tell" and is left alone, because a wrong rejection costs a retry and
+    then a worse paragraph.
+    """
+    found = [
+        (match.start(), name)
+        for name, pattern in CATEGORY_CUE_RE.items()
+        if (match := pattern.search(summary))
+    ]
+    return min(found)[1] if found else None
+
+
+def validate_summary(
+    summary: str, facts: str, leads_with: Optional[str] = None
+) -> list[str]:
+    """Return the specificity violations in `summary`, empty list if clean.
+
+    `leads_with` is the category the headline names. Passing it also checks the
+    prose opens on that same weakness, so the report doesn't answer "what's my
+    biggest leak" two different ways.
+    """
     violations = []
     allowed = _allowed_numbers(facts)
     for raw in NUMBER_RE.findall(summary):
@@ -146,6 +200,14 @@ def validate_summary(summary: str, facts: str) -> list[str]:
     for term, pattern in BANNED_RE.items():
         if pattern.search(summary) and not pattern.search(facts):
             violations.append(f"unsupported specificity: {term}")
+
+    if leads_with:
+        leader = _leading_category(summary)
+        if leader and leader != leads_with:
+            violations.append(
+                f"leads with {leader}, but the report's headline names "
+                f"{leads_with} as the biggest leak — lead with that instead"
+            )
 
     return violations
 
@@ -219,6 +281,10 @@ async def generate_llm_summary(
     time_control: str,
 ) -> SummaryResult:
     facts = build_facts(categories, recommendations, games_analyzed, time_control)
+    # The headline is built from the same ranking, so this is what the prose
+    # has to agree with.
+    ranked = rank_categories(categories)
+    leader = ranked[0].name if ranked else None
     all_violations: list[str] = []
     correction = None
 
@@ -235,7 +301,7 @@ async def generate_llm_summary(
             all_violations.append(f"llm_error: {exc}")
             break
 
-        violations = validate_summary(text, facts)
+        violations = validate_summary(text, facts, leads_with=leader)
         if not violations:
             return SummaryResult(text=text, source="llm", violations=all_violations)
 
