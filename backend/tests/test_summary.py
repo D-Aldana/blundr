@@ -422,7 +422,8 @@ _DETAILS = {
     "endgame": {"games_affected": 4},
     "time_management": {"low_bucket_avg_cpl": 180, "high_bucket_avg_cpl": 90,
                         "ratio": 2.0, "low_bucket_moves": 22},
-    "conversion": {"games_reached_winning": 10, "games_converted": 3, "avg_drop_cp": 450},
+    "conversion": {"games_reached_winning": 10, "games_converted": 3,
+                   "games_thrown_away": 5, "games_recovered": 2},
 }
 
 

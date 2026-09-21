@@ -76,6 +76,10 @@ def _pawns(centipawns: float) -> str:
     return f"{centipawns / 100:.1f}"
 
 
+def _games(n: int) -> str:
+    return f"{n} game" if n == 1 else f"{n} games"
+
+
 def _evidence(category: CategoryResult) -> str:
     d = category.details
     n = category.instances
@@ -99,11 +103,25 @@ def _evidence(category: CategoryResult) -> str:
             f"across {d['low_bucket_moves']} rushed moves."
         )
     if category.name == "conversion":
-        return (
-            f"You reached a winning position in {d['games_reached_winning']} games "
-            f"and converted {d['games_converted']} of them; in the {n} you didn't, "
-            f"the advantage fell by {_pawns(d['avg_drop_cp'])} pawns on average."
-        )
+        # No centipawn figure here on purpose. A lost position bottoms out at the
+        # eval clamp, so "peak minus trough" measures the clamp, not the game —
+        # it read as "the advantage fell by 15.2 pawns", which means nothing.
+        parts = [
+            f"You reached a winning position in "
+            f"{_games(d['games_reached_winning'])} and won "
+            f"{d['games_converted']} of them cleanly."
+        ]
+        rest = []
+        if d["games_thrown_away"]:
+            rest.append(f"{d['games_thrown_away']} slipped into a draw or a loss")
+        if d["games_recovered"]:
+            rest.append(
+                f"{d['games_recovered']} you let go completely before taking "
+                f"the win back anyway"
+            )
+        if rest:
+            parts.append("Of the rest, " + " and ".join(rest) + ".")
+        return " ".join(parts)
     return ""
 
 

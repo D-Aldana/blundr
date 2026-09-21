@@ -208,7 +208,12 @@ def classify_conversion(rows: list[MoveRow]) -> CategoryResult:
                 }
             )
 
-    total = sum(i["drop_cp"] for i in instances)
+    # Letting a win go and losing it is a different event from letting it go and
+    # scrambling back, and a report that calls the second one "not converted"
+    # is telling the player they lost a game they remember winning.
+    thrown_away = [i for i in instances if i["result"] != "win"]
+    recovered = [i for i in instances if i["result"] == "win"]
+
     return CategoryResult(
         name="conversion",
         score=_score(len(instances), games_winning, "conversion"),
@@ -217,7 +222,8 @@ def classify_conversion(rows: list[MoveRow]) -> CategoryResult:
         details={
             "games_reached_winning": games_winning,
             "games_converted": games_winning - len(instances),
-            "avg_drop_cp": round(total / len(instances)) if instances else 0,
+            "games_thrown_away": len(thrown_away),
+            "games_recovered": len(recovered),
             "pattern": {
                 "count": len(instances),
                 "in_games_lost": sum(1 for i in instances if i["result"] == "loss"),

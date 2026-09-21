@@ -66,7 +66,8 @@ def test_recommendations_are_capped_and_carry_evidence():
             details={
                 "games_reached_winning": 9,
                 "games_converted": 5,
-                "avg_drop_cp": 520,
+                "games_thrown_away": 3,
+                "games_recovered": 1,
                 "examples": [],
             },
         ),
@@ -105,7 +106,7 @@ def test_no_recommendations_when_no_category_qualifies():
 
 # --- Pattern notes -----------------------------------------------------------
 
-from app.recommend import _pattern_note  # noqa: E402
+from app.recommend import _evidence, _pattern_note  # noqa: E402
 
 
 def _details(count, **counts):
@@ -156,3 +157,46 @@ def test_the_note_rides_on_the_evidence_line():
     evidence = map_recommendations(cats)[0].evidence
     assert "2.3 pawns given up" in evidence          # the original evidence survives
     assert "already better in" in evidence           # and the pattern is appended
+
+
+# --- Conversion evidence -----------------------------------------------------
+
+
+def _conversion(**counts):
+    base = {"games_reached_winning": 13, "games_converted": 9,
+            "games_thrown_away": 3, "games_recovered": 1, "pattern": {}}
+    base.update(counts)
+    return make_category("conversion", score=0.5, instances=4, details=base)
+
+
+def test_conversion_evidence_quotes_no_centipawn_swing():
+    """A lost position bottoms out at the eval clamp, so peak-minus-trough
+    measured the clamp and printed as 'the advantage fell by 15.2 pawns'."""
+    evidence = _evidence(_conversion())
+    assert "pawns" not in evidence
+    assert "15" not in evidence
+
+
+def test_a_game_you_won_is_never_called_unconverted():
+    """Real report told the user they failed to convert a game they won."""
+    evidence = _evidence(_conversion())
+    assert "won 9 of them cleanly" in evidence
+    assert "1 you let go completely before taking the win back anyway" in evidence
+
+
+def test_clean_sweep_mentions_no_rest():
+    evidence = _evidence(_conversion(games_reached_winning=5, games_converted=5,
+                                     games_thrown_away=0, games_recovered=0))
+    assert evidence == "You reached a winning position in 5 games and won 5 of them cleanly."
+
+
+def test_only_losses_reads_without_the_recovery_clause():
+    evidence = _evidence(_conversion(games_thrown_away=4, games_recovered=0))
+    assert "Of the rest, 4 slipped into a draw or a loss." in evidence
+    assert "taking the win back" not in evidence
+
+
+def test_a_single_winning_game_is_singular():
+    evidence = _evidence(_conversion(games_reached_winning=1, games_converted=0,
+                                     games_thrown_away=1, games_recovered=0))
+    assert "in 1 game and" in evidence
