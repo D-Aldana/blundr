@@ -165,9 +165,6 @@ export function Report({
       <section className="rise mt-14" style={{ animationDelay: '280ms' }}>
         <h2 className="label border-b border-ink/25 pb-2">The verdict</h2>
         <p className="mt-6 text-xl leading-relaxed">{report.summary}</p>
-        {report.summary_source === 'fallback' && (
-          <p className="label mt-4">Written from your numbers, not by the model</p>
-        )}
       </section>
 
       <footer className="no-print mt-14 flex flex-wrap gap-3 border-t border-ink/25 pt-6">
