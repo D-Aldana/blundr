@@ -68,7 +68,7 @@ def _pattern_note(details: dict) -> str:
     for key, template in PATTERN_NOTES:
         n = pattern.get(key)
         if n and n / total >= PATTERN_SHARE:
-            return " " + template.format(n=n, total=total) + "."
+            return template.format(n=n, total=total) + "."
     return ""
 
 
@@ -149,9 +149,8 @@ def map_recommendations(categories: list[CategoryResult]) -> list[Recommendation
         Recommendation(
             category=c.name,
             text=PRACTICE_TEXT[c.name],
-            # The pattern rides on the evidence line so it reaches the report,
-            # the LLM's facts and the deterministic fallback without new wiring.
-            evidence=_evidence(c) + _pattern_note(c.details),
+            evidence=_evidence(c),
+            pattern=_pattern_note(c.details),
         )
         for c in rank_categories(categories)[:MAX_RECOMMENDATIONS]
     ]

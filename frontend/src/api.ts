@@ -22,7 +22,12 @@ export type Report = {
   username: string
   headline: string
   categories: Category[]
-  recommendations: { category: Category['name']; text: string; evidence: string }[]
+  recommendations: {
+    category: Category['name']
+    text: string
+    evidence: string
+    pattern: string
+  }[]
   summary: string
   summary_source: 'llm' | 'fallback'
   games_analyzed: number

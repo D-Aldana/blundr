@@ -139,7 +139,8 @@ def build_facts(
     lines += ["", "Recommendations already written for the player:"]
     if recommendations:
         for rec in recommendations:
-            lines.append(f"- {rec.category}: {rec.text} Evidence: {rec.evidence}")
+            evidence = " ".join(p for p in (rec.evidence, rec.pattern) if p)
+            lines.append(f"- {rec.category}: {rec.text} Evidence: {evidence}")
     else:
         lines.append("- none: no category scored high enough to recommend a focus.")
     return "\n".join(lines)
@@ -255,6 +256,8 @@ def fallback_summary(
     # only has to hand off to them rather than restate the numbers.
     if recommendations:
         parts.append(recommendations[0].evidence)
+        if recommendations[0].pattern:
+            parts.append(recommendations[0].pattern)
         parts.append(recommendations[0].text)
 
     # Said plainly, because three or four instances is a hint, not a verdict.

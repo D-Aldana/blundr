@@ -117,7 +117,7 @@ def _details(count, **counts):
 
 def test_a_lopsided_pattern_is_named():
     note = _pattern_note(_details(9, while_winning=6))
-    assert note == " 6 of those 9 came in positions you were already better in."
+    assert note == "6 of those 9 came in positions you were already better in."
 
 
 def test_an_even_spread_says_nothing():
@@ -138,7 +138,7 @@ def test_only_the_strongest_pattern_is_said():
 
 def test_losing_games_is_named_when_winning_positions_are_not():
     note = _pattern_note(_details(5, while_winning=1, in_games_lost=4))
-    assert note == " 4 of those 5 came in games you went on to lose."
+    assert note == "4 of those 5 came in games you went on to lose."
 
 
 def test_missing_pattern_data_is_harmless():
@@ -146,7 +146,7 @@ def test_missing_pattern_data_is_harmless():
     assert _pattern_note({"pattern": {}}) == ""
 
 
-def test_the_note_rides_on_the_evidence_line():
+def test_the_note_is_its_own_field():
     cats = [
         make_category("tactical", score=0.5, instances=9, details={
             "avg_cpl": 230, "opportunities": 300,
@@ -154,9 +154,10 @@ def test_the_note_rides_on_the_evidence_line():
                         "after_move_30": 0, "in_games_lost": 0},
         })
     ]
-    evidence = map_recommendations(cats)[0].evidence
-    assert "2.3 pawns given up" in evidence          # the original evidence survives
-    assert "already better in" in evidence           # and the pattern is appended
+    rec = map_recommendations(cats)[0]
+    assert "2.3 pawns given up" in rec.evidence
+    assert rec.pattern == "6 of those 9 came in positions you were already better in."
+    assert "already better in" not in rec.evidence
 
 
 # --- Conversion evidence -----------------------------------------------------
