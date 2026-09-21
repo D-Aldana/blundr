@@ -81,7 +81,7 @@ async def test_pipeline_produces_a_grounded_report(monkeypatch):
     assert report["games_analyzed"] == 20
     assert len(report["categories"]) == 4
     assert all(0.0 <= c["score"] <= 1.0 for c in report["categories"])
-    assert set(report["recommendations"][0]) == {"category", "text", "evidence"}
+    assert set(report["recommendations"][0]) == {"category", "text", "evidence", "pattern"}
     # No category detail (examples, raw cpl lists) leaks into the payload.
     assert all(set(c) == {"name", "score", "confidence", "instances"} for c in report["categories"])
 

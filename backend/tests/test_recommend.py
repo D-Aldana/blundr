@@ -109,44 +109,54 @@ def test_no_recommendations_when_no_category_qualifies():
 from app.recommend import _evidence, _pattern_note  # noqa: E402
 
 
-def _details(count, **counts):
+def _with_pattern(count, name="tactical", **counts):
     base = {"count": count, "while_winning": 0, "after_move_30": 0, "in_games_lost": 0}
     base.update(counts)
-    return {"pattern": base}
+    return make_category(name, score=0.5, instances=count, details={"pattern": base})
 
 
 def test_a_lopsided_pattern_is_named():
-    note = _pattern_note(_details(9, while_winning=6))
-    assert note == " 6 of those 9 came in positions you were already better in."
+    note = _pattern_note(_with_pattern(9, while_winning=6))
+    assert note == "6 of those 9 came in positions you were already better in."
 
 
 def test_an_even_spread_says_nothing():
     """Three of nine is where those moves happened to fall, not a habit."""
-    assert _pattern_note(_details(9, while_winning=3, after_move_30=3)) == ""
+    assert _pattern_note(_with_pattern(9, while_winning=3, after_move_30=3)) == ""
 
 
 def test_too_few_instances_to_have_a_shape():
-    assert _pattern_note(_details(2, while_winning=2)) == ""
+    assert _pattern_note(_with_pattern(2, while_winning=2)) == ""
 
 
 def test_only_the_strongest_pattern_is_said():
     """All three qualify; the report must not list every near-coincidence."""
-    note = _pattern_note(_details(10, while_winning=8, in_games_lost=9, after_move_30=10))
+    note = _pattern_note(_with_pattern(10, while_winning=8, in_games_lost=9, after_move_30=10))
     assert "already better in" in note
     assert "went on to lose" not in note and "after move 30" not in note
 
 
 def test_losing_games_is_named_when_winning_positions_are_not():
-    note = _pattern_note(_details(5, while_winning=1, in_games_lost=4))
-    assert note == " 4 of those 5 came in games you went on to lose."
+    note = _pattern_note(_with_pattern(5, while_winning=1, in_games_lost=4))
+    assert note == "4 of those 5 came in games you went on to lose."
+
+
+def test_endgame_is_never_told_its_mistakes_came_late():
+    """An endgame move is late by construction, so the axis says nothing here."""
+    assert _pattern_note(_with_pattern(5, name="endgame", after_move_30=5)) == ""
+
+
+def test_endgame_still_gets_the_axes_its_trigger_does_not_imply():
+    note = _pattern_note(_with_pattern(5, name="endgame", after_move_30=5, in_games_lost=4))
+    assert note == "4 of those 5 came in games you went on to lose."
 
 
 def test_missing_pattern_data_is_harmless():
-    assert _pattern_note({}) == ""
-    assert _pattern_note({"pattern": {}}) == ""
+    assert _pattern_note(make_category("tactical", details={})) == ""
+    assert _pattern_note(make_category("tactical", details={"pattern": {}})) == ""
 
 
-def test_the_note_rides_on_the_evidence_line():
+def test_the_note_is_its_own_field():
     cats = [
         make_category("tactical", score=0.5, instances=9, details={
             "avg_cpl": 230, "opportunities": 300,
@@ -154,9 +164,10 @@ def test_the_note_rides_on_the_evidence_line():
                         "after_move_30": 0, "in_games_lost": 0},
         })
     ]
-    evidence = map_recommendations(cats)[0].evidence
-    assert "2.3 pawns given up" in evidence          # the original evidence survives
-    assert "already better in" in evidence           # and the pattern is appended
+    rec = map_recommendations(cats)[0]
+    assert "2.3 pawns given up" in rec.evidence
+    assert rec.pattern == "6 of those 9 came in positions you were already better in."
+    assert "already better in" not in rec.evidence
 
 
 # --- Conversion evidence -----------------------------------------------------

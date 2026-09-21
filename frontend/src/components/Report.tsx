@@ -155,9 +155,11 @@ export function Report({
               {CATEGORY_LABEL[rec.category]}
             </h3>
             <p className="mt-2 text-lg leading-relaxed">{rec.text}</p>
-            <p className="mt-3 border-l-2 border-ink/20 pl-4 font-mono text-[0.8rem] leading-relaxed text-ink-soft">
-              {rec.evidence}
-            </p>
+            <div className="mt-3 border-l-2 border-ink/20 pl-4 font-mono text-[0.8rem] leading-relaxed text-ink-soft">
+              <p>{rec.evidence}</p>
+              {/* Full contrast: the pattern is the line a player can act on. */}
+              {rec.pattern && <p className="mt-2 text-ink">{rec.pattern}</p>}
+            </div>
           </article>
         ))}
       </section>

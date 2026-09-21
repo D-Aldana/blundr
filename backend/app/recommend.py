@@ -57,18 +57,27 @@ PATTERN_NOTES = [
     ("after_move_30", "{n} of those {total} came after move 30"),
 ]
 
+# Axes a category's own trigger already implies, where "they all came in X" is
+# arithmetic rather than a finding. Endgame moves are late by construction — 12
+# pieces or fewer — the way a conversion instance is by definition a position
+# the player was winning, which is why `classify` never counts that one.
+PATTERN_IMPLIED = {"endgame": {"after_move_30"}}
 
-def _pattern_note(details: dict) -> str:
+
+def _pattern_note(category: CategoryResult) -> str:
     """One sentence on where a weakness concentrates, or nothing."""
-    pattern = details.get("pattern") or {}
+    pattern = category.details.get("pattern") or {}
     total = pattern.get("count", 0)
     if total < config.MIN_INSTANCES:
         return ""  # too few to have a shape
 
+    implied = PATTERN_IMPLIED.get(category.name, frozenset())
     for key, template in PATTERN_NOTES:
+        if key in implied:
+            continue
         n = pattern.get(key)
         if n and n / total >= PATTERN_SHARE:
-            return " " + template.format(n=n, total=total) + "."
+            return template.format(n=n, total=total) + "."
     return ""
 
 
@@ -149,9 +158,8 @@ def map_recommendations(categories: list[CategoryResult]) -> list[Recommendation
         Recommendation(
             category=c.name,
             text=PRACTICE_TEXT[c.name],
-            # The pattern rides on the evidence line so it reaches the report,
-            # the LLM's facts and the deterministic fallback without new wiring.
-            evidence=_evidence(c) + _pattern_note(c.details),
+            evidence=_evidence(c),
+            pattern=_pattern_note(c),
         )
         for c in rank_categories(categories)[:MAX_RECOMMENDATIONS]
     ]

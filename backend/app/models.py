@@ -55,9 +55,17 @@ class Recommendation:
     category: str
     text: str
     evidence: str
+    # Where the weakness concentrates, when it concentrates anywhere. Its own
+    # field rather than a suffix on evidence, so the report can place it.
+    pattern: str = ""
 
     def to_payload(self) -> dict:
-        return {"category": self.category, "text": self.text, "evidence": self.evidence}
+        return {
+            "category": self.category,
+            "text": self.text,
+            "evidence": self.evidence,
+            "pattern": self.pattern,
+        }
 
 
 @dataclass
