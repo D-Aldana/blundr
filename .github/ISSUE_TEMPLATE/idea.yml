@@ -1,0 +1,21 @@
+name: Idea
+description: A change to how Blundr works, reads, or scores
+labels: [idea]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: >
+        What should change, and what it would do for someone using the tool.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Anything it conflicts with
+      description: >
+        Optional. `docs/prd.md` §4 lists the non-goals and §18 the deferred
+        phases — if your idea touches one, say so and make the case. Plenty of
+        them are deferred rather than rejected.
