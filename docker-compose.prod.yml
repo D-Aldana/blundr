@@ -1,0 +1,58 @@
+# Public deployment. Differs from docker-compose.yml in every way that matters:
+# no dev servers, no source bind-mounts, and the backend is not published on the
+# host — Caddy is the only way in.
+#
+#   SITE_ADDRESS=blundr.example.com docker compose -f docker-compose.prod.yml up -d --build
+#
+# Set SITE_ADDRESS to a domain pointed at this machine and Caddy gets a
+# certificate on its own. Use :80 to run without TLS while testing.
+
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Caddy is the only ingress and it overwrites X-Forwarded-For, so the
+      # forwarded IP can be trusted. This is only true because the backend has
+      # no `ports` — publishing it would let callers forge an IP and walk past
+      # every limit below.
+      TRUST_PROXY_HEADER: "true"
+
+      # Same origin via Caddy, so CORS is never exercised by the app itself.
+      ALLOWED_ORIGINS: ${SITE_URL:-https://localhost}
+
+      # 4 cores, 2 engine threads per analysis. Raise with the core count.
+      MAX_CONCURRENT_ANALYSES: "2"
+      MAX_QUEUED_ANALYSES: "8"
+
+      # Far below the local defaults: capacity here is shared, and one visitor
+      # should not be able to occupy the queue.
+      RATE_LIMIT_ANALYZE: "5"
+      RATE_LIMIT_ELIGIBILITY: "60"
+    expose:
+      - "8000"
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      # Certificates live here; losing this volume means re-issuing them, and
+      # Let's Encrypt rate-limits that.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+
+volumes:
+  caddy_data:
+  caddy_config:
