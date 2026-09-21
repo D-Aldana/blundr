@@ -145,6 +145,14 @@ LLM_PROVIDER=openai SUMMARY_MODEL=gpt-4o
 LLM_PROVIDER=ollama SUMMARY_MODEL=llama3.2
 ```
 
+Running Blundr in Docker but Ollama on your machine? `localhost` from inside
+the container is the container, so point it at the host instead — nothing else
+needs changing, and Ollama can stay on its default loopback binding:
+
+```bash
+OLLAMA_HOST=http://host.docker.internal:11434
+```
+
 **Anything OpenAI-compatible** — Groq, OpenRouter, Together, Gemini's
 compatibility layer, LM Studio, vLLM — point `OPENAI_BASE_URL` at it:
 
