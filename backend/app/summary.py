@@ -212,31 +212,62 @@ def validate_summary(
     return violations
 
 
+# Opening line per category. Written out rather than interpolated from the
+# internal name, which produced things like "your clearest leak is endgame".
+# Each one names its own category in words _leading_category can read back.
+OPENERS = {
+    "tactical": "Tactics are what these games are costing you.",
+    "endgame": "Your endgame is where these games slip away.",
+    "time_management": "The clock is what undoes you.",
+    "conversion": "Converting won positions is the gap.",
+}
+
+# How a category reads as the thing to work on next, mid-sentence.
+NEXT_UP = {
+    "tactical": "your tactical eye",
+    "endgame": "your endgame technique",
+    "time_management": "how you spend your clock",
+    "conversion": "converting the games you get on top in",
+}
+
+NO_LEAK_SUMMARY = (
+    "No single fundamental stands out here — across these games nothing is "
+    "costing you often enough to score as a real weakness. That's a good "
+    "position to be in. Keep playing, and check back in a few weeks, when "
+    "any pattern has more room to show itself."
+)
+
+
 def fallback_summary(
     categories: list[CategoryResult], recommendations: list[Recommendation]
 ) -> str:
-    """Deterministic paragraph, used when the LLM is unavailable or its output
-    fails validation. Says less, but every word is grounded."""
+    """Deterministic paragraph, used when no provider is configured, the call
+    fails, or the model's prose doesn't validate. Says less than the LLM, but
+    every word is grounded and it costs nothing."""
     ranked = rank_categories(categories)
     if not ranked:
-        return (
-            "Across these games no single fundamental stands out as a clear leak — "
-            "nothing here is costing you games often enough to score. Keep playing "
-            "and check back in a few weeks, when a pattern has more room to show up."
-        )
+        return NO_LEAK_SUMMARY
 
     worst = ranked[0]
-    parts = [
-        f"Your clearest leak in these games is {worst.name.replace('_', ' ')}, "
-        f"flagged {worst.instances} times."
-    ]
+    parts = [OPENERS[worst.name]]
+
+    # The evidence and practice lines are already written prose, so the opener
+    # only has to hand off to them rather than restate the numbers.
     if recommendations:
         parts.append(recommendations[0].evidence)
         parts.append(recommendations[0].text)
+
+    # Said plainly, because three or four instances is a hint, not a verdict.
+    if worst.confidence == "low":
+        parts.append(
+            "That's a small number of positions to judge from, so treat it as "
+            "a direction to look rather than a settled diagnosis."
+        )
+
     if len(ranked) > 1:
         parts.append(
-            f"Once that improves, {ranked[1].name.replace('_', ' ')} is the next "
-            f"thing worth your practice time."
+            f"Once that's steadier, {NEXT_UP[ranked[1].name]} is the next thing "
+            f"worth your practice time."
         )
     return " ".join(parts)
 

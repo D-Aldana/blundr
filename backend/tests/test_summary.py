@@ -11,7 +11,7 @@ from app.summary import (
     generate_llm_summary,
     validate_summary,
 )
-from app.recommend import rank_categories
+from app.recommend import map_recommendations, rank_categories
 from conftest import make_category
 
 CATEGORIES = [
@@ -67,15 +67,18 @@ def test_term_present_in_the_facts_is_allowed():
     assert validate_summary("That fork pattern keeps costing you.", facts) == []
 
 
-def test_fallback_is_grounded_and_mentions_the_worst_category():
+def test_fallback_is_grounded_and_leads_with_the_worst_category():
     text = fallback_summary(CATEGORIES, RECS)
-    assert "tactical" in text
-    assert validate_summary(text, FACTS) == []
+    # Asserted through the reader, not a substring, so rewording the prose
+    # doesn't fail the test while actually staying correct.
+    assert summary_module._leading_category(text) == "tactical"
+    assert validate_summary(text, FACTS, leads_with="tactical") == []
 
 
 def test_fallback_when_nothing_qualifies():
     text = fallback_summary([make_category("tactical", confidence="insufficient")], [])
-    assert "no single fundamental stands out" in text
+    assert text == summary_module.NO_LEAK_SUMMARY
+    assert "stands out" in text
 
 
 async def test_llm_output_is_used_when_it_validates(monkeypatch):
@@ -375,3 +378,58 @@ def test_the_fallback_paragraph_never_contradicts_the_headline():
     facts = build_facts(CONTRADICTION_CATEGORIES, [], 20, "blitz")
     text = fallback_summary(CONTRADICTION_CATEGORIES, [])
     assert validate_summary(text, facts, leads_with=ranked[0].name) == []
+
+
+# --- Fallback prose ----------------------------------------------------------
+
+
+@pytest.mark.parametrize("category", ["tactical", "endgame", "time_management", "conversion"])
+def test_every_category_has_an_opener_the_reader_can_identify(category):
+    """An opener the leading-category check can't read would make the fallback
+    fail the very agreement rule the LLM path is held to."""
+    assert summary_module._leading_category(summary_module.OPENERS[category]) == category
+
+
+@pytest.mark.parametrize("category", ["tactical", "endgame", "time_management", "conversion"])
+def test_every_category_can_be_named_as_the_next_thing(category):
+    assert category in summary_module.NEXT_UP
+    assert summary_module.NEXT_UP[category].islower()
+
+
+def test_low_confidence_is_said_out_loud():
+    thin = [make_category("endgame", score=0.48, instances=3, confidence="low",
+                          details={"games_affected": 3})]
+    assert "settled diagnosis" in fallback_summary(thin, map_recommendations(thin))
+
+
+def test_a_solid_sample_is_not_hedged():
+    solid = [make_category("tactical", score=0.62, instances=14, details={"avg_cpl": 240})]
+    assert "settled diagnosis" not in fallback_summary(solid, map_recommendations(solid))
+
+
+def test_fallback_never_leaks_internal_names_or_jargon():
+    """'time_management' and 'flagged N times' both reached users before."""
+    for worst in ("tactical", "endgame", "time_management", "conversion"):
+        cats = [make_category(worst, score=0.5, instances=8, details=_DETAILS[worst])]
+        text = fallback_summary(cats, map_recommendations(cats))
+        assert "_" not in text
+        assert "flagged" not in text
+        assert "instances" not in text
+
+
+_DETAILS = {
+    "tactical": {"avg_cpl": 240},
+    "endgame": {"games_affected": 4},
+    "time_management": {"low_bucket_avg_cpl": 180, "high_bucket_avg_cpl": 90,
+                        "ratio": 2.0, "low_bucket_moves": 22},
+    "conversion": {"games_reached_winning": 10, "games_converted": 3, "avg_drop_cp": 450},
+}
+
+
+@pytest.mark.parametrize("worst", ["tactical", "endgame", "time_management", "conversion"])
+def test_fallback_validates_for_every_worst_category(worst):
+    cats = [make_category(worst, score=0.5, instances=8, details=_DETAILS[worst])]
+    recs = map_recommendations(cats)
+    facts = build_facts(cats, recs, 20, "blitz")
+    text = fallback_summary(cats, recs)
+    assert validate_summary(text, facts, leads_with=worst) == []
