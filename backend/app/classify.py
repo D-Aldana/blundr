@@ -49,6 +49,29 @@ def _worst_examples(rows: list[MoveRow], limit: int = 3) -> list[dict]:
     return [_example(r) for r in sorted(rows, key=lambda r: -(r.cpl or 0))[:limit]]
 
 
+# A flagged move's eval has to be clearly on the player's side before "you were
+# already better" means anything; inside this band the game was level.
+PATTERN_AHEAD_CP = 100
+PATTERN_LATE_MOVE = 30
+
+
+def _pattern(rows: list[MoveRow]) -> dict:
+    """The shape of a set of flagged moves — when they happen, not what they were.
+
+    The scores say how often a weakness fires; this says whether the misses
+    share a situation, which is the part a player can actually act on. Counts
+    only, no judgement: `recommend` decides what's lopsided enough to mention.
+    """
+    if not rows:
+        return {}
+    return {
+        "count": len(rows),
+        "while_winning": sum(1 for r in rows if r.eval_before_cp > PATTERN_AHEAD_CP),
+        "after_move_30": sum(1 for r in rows if r.move_number > PATTERN_LATE_MOVE),
+        "in_games_lost": sum(1 for r in rows if r.result == "loss"),
+    }
+
+
 def is_meaningful(row: MoveRow) -> bool:
     """Was there anything real to lose on this move?
 
@@ -87,6 +110,7 @@ def classify_tactical(rows: list[MoveRow]) -> CategoryResult:
         details={
             "avg_cpl": round(mean([r.cpl for r in qualifying])) if qualifying else 0,
             "opportunities": opportunities,
+            "pattern": _pattern(qualifying),
             "examples": _worst_examples(qualifying),
         },
     )
@@ -107,6 +131,7 @@ def classify_endgame(rows: list[MoveRow]) -> CategoryResult:
             "avg_cpl": round(mean([r.cpl for r in qualifying])) if qualifying else 0,
             "games_affected": games,
             "opportunities": len(endgame_moves),
+            "pattern": _pattern(qualifying),
             "examples": _worst_examples(qualifying),
         },
     )
@@ -142,6 +167,7 @@ def classify_time_management(rows: list[MoveRow]) -> CategoryResult:
             "low_bucket_avg_cpl": round(low_avg),
             "high_bucket_avg_cpl": round(high_avg),
             "gate_met": gate_met,
+            "pattern": _pattern(qualifying),
             "examples": _worst_examples(qualifying),
         },
     )
@@ -192,6 +218,10 @@ def classify_conversion(rows: list[MoveRow]) -> CategoryResult:
             "games_reached_winning": games_winning,
             "games_converted": games_winning - len(instances),
             "avg_drop_cp": round(total / len(instances)) if instances else 0,
+            "pattern": {
+                "count": len(instances),
+                "in_games_lost": sum(1 for i in instances if i["result"] == "loss"),
+            } if instances else {},
             "examples": sorted(instances, key=lambda i: -i["drop_cp"])[:3],
         },
     )

@@ -44,6 +44,34 @@ NO_LEAK_HEADLINE = (
 )
 
 
+# A pattern is worth naming only when it's lopsided enough not to be chance.
+# Below this it's just where the moves happened to fall.
+PATTERN_SHARE = 0.6
+
+# Strongest first: only one is ever said, so a report never turns into a list of
+# near-coincidences. "Already better" leads because it names a habit; the others
+# name a moment and a consequence.
+PATTERN_NOTES = [
+    ("while_winning", "{n} of those {total} came in positions you were already better in"),
+    ("in_games_lost", "{n} of those {total} came in games you went on to lose"),
+    ("after_move_30", "{n} of those {total} came after move 30"),
+]
+
+
+def _pattern_note(details: dict) -> str:
+    """One sentence on where a weakness concentrates, or nothing."""
+    pattern = details.get("pattern") or {}
+    total = pattern.get("count", 0)
+    if total < config.MIN_INSTANCES:
+        return ""  # too few to have a shape
+
+    for key, template in PATTERN_NOTES:
+        n = pattern.get(key)
+        if n and n / total >= PATTERN_SHARE:
+            return " " + template.format(n=n, total=total) + "."
+    return ""
+
+
 def _pawns(centipawns: float) -> str:
     return f"{centipawns / 100:.1f}"
 
@@ -101,7 +129,11 @@ def headline(categories: list[CategoryResult]) -> str:
 def map_recommendations(categories: list[CategoryResult]) -> list[Recommendation]:
     return [
         Recommendation(
-            category=c.name, text=PRACTICE_TEXT[c.name], evidence=_evidence(c)
+            category=c.name,
+            text=PRACTICE_TEXT[c.name],
+            # The pattern rides on the evidence line so it reaches the report,
+            # the LLM's facts and the deterministic fallback without new wiring.
+            evidence=_evidence(c) + _pattern_note(c.details),
         )
         for c in rank_categories(categories)[:MAX_RECOMMENDATIONS]
     ]

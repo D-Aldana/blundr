@@ -190,3 +190,55 @@ def test_decided_positions_are_excluded_from_time_buckets():
     result = classify_time_management(won)
     assert result.details["low_bucket_moves"] == 0
     assert result.instances == 0
+
+
+# --- Pattern shape -----------------------------------------------------------
+
+from app.classify import _pattern  # noqa: E402
+
+
+def _row(**kw):
+    base = dict(eval_before_cp=0, move_number=10, result="win")
+    base.update(kw)
+    return make_row(**base)
+
+
+def test_pattern_counts_the_situations_a_miss_happened_in():
+    rows = [
+        _row(eval_before_cp=300, move_number=40, result="loss"),
+        _row(eval_before_cp=300, move_number=12, result="win"),
+        _row(eval_before_cp=-200, move_number=35, result="loss"),
+    ]
+    assert _pattern(rows) == {
+        "count": 3,
+        "while_winning": 2,
+        "after_move_30": 2,
+        "in_games_lost": 2,
+    }
+
+
+def test_a_level_position_is_not_winning():
+    """The 100cp band is noise, not an advantage the player squandered."""
+    assert _pattern([_row(eval_before_cp=100)])["while_winning"] == 0
+    assert _pattern([_row(eval_before_cp=101)])["while_winning"] == 1
+
+
+def test_move_30_itself_is_not_late():
+    assert _pattern([_row(move_number=30)])["after_move_30"] == 0
+    assert _pattern([_row(move_number=31)])["after_move_30"] == 1
+
+
+def test_no_flagged_moves_means_no_pattern():
+    assert _pattern([]) == {}
+
+
+def test_every_classifier_reports_a_pattern():
+    """Including conversion, which counts whole games rather than moves."""
+    rows = [
+        make_row(cpl=300, best_is_forcing=True, piece_count=8, clock_pct=0.1,
+                 eval_after_cp=700, move_number=35, result="loss"),
+        make_row(cpl=250, best_is_forcing=True, piece_count=8, clock_pct=0.1,
+                 eval_after_cp=50, move_number=36, result="loss"),
+    ]
+    for category in classify_weaknesses(rows):
+        assert "pattern" in category.details, category.name
