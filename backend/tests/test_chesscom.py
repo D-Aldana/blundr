@@ -55,6 +55,19 @@ async def test_user_with_no_games_is_not_a_missing_user(mock_api):
     }
 
 
+async def test_archive_listed_but_missing_is_skipped(mock_api):
+    """Chess.com lists the current month in the index before any game lands in
+    it, and that URL 404s. It's the newest archive, so it's walked first."""
+    mock_api(
+        {
+            ARCHIVES: {"archives": [JAN, FEB]},
+            JAN: {"games": [game("blitz", "a")]},
+        }
+    )
+    counts = await chesscom.fetch_game_counts("testplayer")
+    assert counts == {"bullet": 0, "blitz": 1, "rapid": 0}
+
+
 async def test_counts_are_bucketed_by_time_class(mock_api):
     mock_api(
         {
