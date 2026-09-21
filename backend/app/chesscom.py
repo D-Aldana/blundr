@@ -63,6 +63,11 @@ async def _iter_recent_games(
 
     for url in list(reversed(archive_urls))[: config.MAX_ARCHIVE_MONTHS]:
         resp = await client.get(url, headers=config.CHESS_COM_HEADERS)
+        # The index can list a month that 404s — the current one, before a game
+        # lands in it. It's the first month we walk, so raising here fails the
+        # whole request for anyone who hasn't played yet this month.
+        if resp.status_code == 404:
+            continue
         resp.raise_for_status()
         games = resp.json().get("games", [])
         # Chess.com returns each month oldest-first; reverse for newest-first.
