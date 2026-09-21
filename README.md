@@ -198,6 +198,14 @@ curl -X POST localhost:8000/analyze -H 'content-type: application/json' \
 curl localhost:8000/analyze/<job_id>
 ```
 
+## Contributing
+
+Issues and pull requests are welcome — bug reports, sharper copy, another LLM
+provider, more calibration data. [`CONTRIBUTING.md`](CONTRIBUTING.md) covers
+what has to pass, where things live, and what's deliberately out of scope.
+
+If something confused you while running it, that's worth an issue on its own.
+
 ## Branding
 
 The stumbling-knight mark, its palette, and the full favicon/PWA/OG asset set
