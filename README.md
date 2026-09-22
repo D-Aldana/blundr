@@ -198,6 +198,22 @@ curl -X POST localhost:8000/analyze -H 'content-type: application/json' \
 curl localhost:8000/analyze/<job_id>
 ```
 
+### Hosting it publicly
+
+`docker compose up` is a development stack — dev servers, source mounts, and
+limits set for one person on one machine. To put it on the internet, use the
+production stack instead:
+
+```bash
+SITE_ADDRESS=your.domain docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Caddy serves the built frontend, terminates TLS and routes `/api` to the
+backend, which isn't published on the host at all.
+[`docs/deploy.md`](docs/deploy.md) walks through a free Oracle Cloud ARM
+instance end to end, including the two firewalls Oracle makes you open and how
+to tune the engine to the hardware.
+
 ## Contributing
 
 Issues and pull requests are welcome — bug reports, sharper copy, another LLM
