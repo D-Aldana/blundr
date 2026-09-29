@@ -6,6 +6,11 @@ of chess fundamentals weaknesses (tactics, endgame technique, time
 management, conversion) with specific, evidence-backed practice
 recommendations.
 
+<p align="center">
+  <img src="docs/demo.gif" width="420"
+       alt="Typing a chess.com username into Blundr, the analysis running, and the weakness report appearing" />
+</p>
+
 See [`docs/prd.md`](docs/prd.md) for the full product spec — problem, scope,
 taxonomy, pipeline, tech stack, API contract, and classifier thresholds.
 
