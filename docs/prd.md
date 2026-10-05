@@ -9,7 +9,7 @@
 
 ## 1. Summary
 
-A free, no-signup web tool that takes a Chess.com username and time control, analyzes the player's last 20 games with Stockfish, and produces a shareable "weakness report card" — a small set of chess-fundamentals scores (tactics, endgame technique, time management, conversion), the top 1-2 things to practice, and a short plain-language summary. Designed to be genuinely useful, fast to try, and attractive enough to share on LinkedIn/social.
+A web tool that takes a Chess.com username and time control, analyzes the player's last 20 games with Stockfish, and produces a shareable "weakness report card" — a small set of chess-fundamentals scores (tactics, endgame technique, time management, conversion), the top 1-2 things to practice, and a short plain-language summary. Designed to be genuinely useful, fast to try, and attractive enough to share on LinkedIn/social.
 
 ## 2. Problem
 
@@ -18,7 +18,7 @@ Existing free tools (Chess.com's own review, Chessigma, etc.) analyze **one game
 ## 3. Goals
 
 - Give a player a credible, data-backed answer to "what are my real weaknesses" — grounded in their own recent games, not generic advice.
-- Make it trivially easy to try (username in, report out, no signup).
+- Make it trivially easy to try (username in, report out).
 - Make the output attractive enough that someone would screenshot and share it.
 - (Secondary/personal goal) Produce a concrete artifact demonstrating disciplined AI-boundary judgment: deterministic classification for anything factual, LLM only for narrative framing, with a validation guardrail against hallucinated claims.
 
@@ -88,7 +88,7 @@ The report requires **at least 20 games in the selected time control** to run at
 
 ## 11. Success criteria for v1
 
-- A stranger can go from "never heard of this" to "has a report" in under 2 minutes, no signup.
+- A stranger can go from "never heard of this" to "has a report" in under 2 minutes.
 - Reports are self-evidently grounded (each recommendation visibly ties to a specific stat, not a platitude).
 - At least one category is correctly suppressed/flagged when sample size is too low, verified with test accounts.
 - The output validation guardrail catches at least one real hallucination case during testing (this is expected and useful, not a bug to be embarrassed by).
