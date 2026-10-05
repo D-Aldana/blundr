@@ -1,6 +1,6 @@
 # Blundr
 
-Free, no-signup tool that takes a Chess.com username, analyzes the last 20
+Takes a Chess.com username, analyzes the last 20
 games in a time control with Stockfish, and produces a shareable report card
 of chess fundamentals weaknesses (tactics, endgame technique, time
 management, conversion) with specific, evidence-backed practice

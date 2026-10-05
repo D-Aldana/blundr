@@ -129,7 +129,7 @@ export function Scoresheet({ busy, error, shortfall, onSubmit }: Props) {
       </form>
 
       <p className="label mt-6 text-center">
-        No signup · free · about 30 seconds
+        Takes about 30 seconds
       </p>
     </main>
   )

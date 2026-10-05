@@ -93,7 +93,7 @@ SUMMARY_MAX_TOKENS = 2000
 SUMMARY_MAX_ATTEMPTS = 2
 
 # --- Abuse limits ------------------------------------------------------------
-# No signup means no account to throttle, so every limit below is keyed on
+# There are no accounts to throttle, so every limit below is keyed on
 # either the request IP or a global ceiling. All of it is in-process state:
 # correct for the single instance PRD section 13 specifies, and it silently
 # becomes per-instance if this is ever scaled out.
