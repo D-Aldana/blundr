@@ -10,7 +10,7 @@ pull request.
 
 ## Getting set up
 
-The README covers [running it](README.md#running-it) — `docker compose up`
+The README covers [running it](README.md#quick-start) — `docker compose up`
 needs nothing installed, `make setup && make dev` is faster to develop
 against. `make` on its own lists every target.
 
